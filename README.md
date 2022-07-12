@@ -6,7 +6,7 @@ Petitjean Q., Laffaille P., Perrault A., Cousseau M., Jean S., Jacquin L. Plasti
 
 ## Content
 
-**The Dataset** folder contains a .csv file corresponding to the dataset used in this study and a .txt file containing the name and the significance of each columns of the dataset.
+* **The Dataset** folder contains a .csv file corresponding to the dataset used in this study and a .txt file containing the name and the significance of each columns of the dataset.
 
 **The Rscript** folder contains 3 .R files:
 - The first one (SourcePlots_PlasticResponsesFishMS.R) corresponding to the custom functions sourced to draw the figures included within the manuscript. 
