@@ -1,0 +1,5201 @@
+---
+title: "'Plastic responses to metal contamination in a multistress context: a field experiment in fish'" 
+author: "Quentin PETITJEAN"
+date: "25/06/2022"
+output: 
+  html_document:
+    toc: TRUE
+    toc_depth: 3
+    toc_float: TRUE
+    number_sections: TRUE
+    use_fontawesome: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=12, fig.height=8, message = F)
+```
+
+# Load libraries 
+```{r libraries, eval = FALSE}
+library(lme4) # To build linear mixed effect model with binomial family
+library(car) # To perform logit and power transformations and obtain p-value from linear mixed effect model
+library(MuMIn) # To perform automated model selection based on AIC and compute conditional and marginal R square for mixed effect model
+library(bimixt) # To transform data using bimixt::boxcox transformation (power transformation)
+library(dplyr) # To manage the database (e.g., left_join, count)
+library(tidyr) # To manage the database (e.g., separate)
+library(performance) # check model performances 
+library(kableExtra) # To draw table
+```
+
+```{r VisualizationFunc,  echo=FALSE, results='hide'}
+# Create the variability among populations plots for survival (with legend)
+Survivplot <- function() {
+  dat2 = dat1[is.na(dat1$Death) == F, ]
+  # create a new dataset containing survival rate within each cage
+  names(dat2)
+  head(dat2)
+  dat2$t2 = paste(dat2$Transfert, dat2$OriginSite, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, CageID))
+  names(n)[1] <- "CageID"
+  names(n)[2] <- "n"
+  alive <- as.data.frame(dplyr::count(dat2[dat2$Death == "0", ], CageID))
+  dead <- as.data.frame(dplyr::count(dat2[dat2$Death == "1", ], CageID))
+  DeathSum <- dplyr::left_join(alive, dead, by = "CageID")
+  DeathSum$n.y[is.na(DeathSum$n.y)] <- 0
+  DeathSum <- dplyr::left_join(DeathSum, n, by = "CageID")
+  names(DeathSum)[2] <- "alive"
+  names(DeathSum)[3] <- "dead"
+  DeathSum$survival <- DeathSum$alive / DeathSum$n
+  DeathSum <-  dplyr::left_join(DeathSum,
+                                dat2[match(DeathSum$CageID,  dat2$CageID), c(
+                                  "CageID",
+                                  "OriginSite",
+                                  "OriginContam",
+                                  "SitesPair",
+                                  "CageSiteID",
+                                  "CagingSite",
+                                  "TransplantContam",
+                                  "Injection",
+                                  "CxOxI",
+                                  "CxO2xI",
+                                  "CxO",
+                                  "O2xI"
+                                )], by = "CageID")
+  
+  names(DeathSum)
+  DeathSum$t2 = paste(DeathSum$OriginSite, DeathSum$TransplantContam, sep =
+                        "_")
+  n = as.data.frame(dplyr::count(DeathSum, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(DeathSum$survival, list(DeathSum$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "survival"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("OriginSite", "TransplantContam"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$OriginSite, Ga$TransplantContam, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(DeathSum$survival, list(DeathSum$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$OriginContam = c("LC", "LC", "HC", "HC", "LC", "LC", "HC", "HC")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2$Or = paste(Ga2$OriginContam, Ga2$TransplantContam, sep = "_")
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$OriginSite, Ga2$TransplantContam, sep = "_")
+  Ga2$Orcolor <-
+    ifelse(Ga2$OriginContam == "LC", "#336633", "#990000")
+  Ga2$OrSymbols <-
+    ifelse(Ga2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             Ga2$OriginSite == "AUSCOR",
+             22,
+             ifelse(Ga2$OriginSite == "CELFIG", 23, 21)
+           ))
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  
+  # Create a custom jitter
+  jitt = 0.3
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create a break interval on Y axis
+  breakInt = c(0.2, 0.7)
+  ylim = c(0, 1)
+  step = 0.1
+  
+  plotScale <- seq(ylim[1], ylim[2], by = step)
+  plotScale <-
+    plotScale[which(plotScale <= breakInt[1] |
+                      plotScale >= breakInt[2])]
+  toAdd <- length(which(plotScale <= breakInt[1]))
+  finalScale <- seq(breakInt[2], ylim[2], by = step)
+  toAddfinal <- c()
+  for (h in (seq(toAdd))) {
+    toAdd_temp <- min(finalScale) - (step * h)
+    toAddfinal <- c(toAddfinal, toAdd_temp)
+  }
+  finalScale <- sort(c(toAddfinal, finalScale))
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(min(finalScale), max(finalScale))
+  )
+  
+  title(
+    ylab = "Survival",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  
+  # draw y axis
+  plotScale <- as.character(plotScale)
+  plotScale[which(plotScale == "1")] <- "1.0"
+  plotScale[which(plotScale == "0")] <- "0.0"
+  segments(
+    x0 = 0,
+    y0 = max(breakInt) - 5 / 100 * max(breakInt),
+    x1 = 0,
+    y1 = 1
+  )
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 0,
+    y1 = max(breakInt) - 10 / 100 * max(breakInt)
+  )
+  text(0,
+       max(breakInt) - 5 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(0,
+       max(breakInt) - 10 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    as.character(plotScale),
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 2,
+    y1 = min(finalScale)
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[j],
+        survival[j],
+        CNumJitter[j + 1],
+        survival[j + 1],
+        Ga2$Orcolor[j],
+        lwd = 2
+      )
+    )
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[k],
+        survival[k] - Se[k],
+        CNumJitter[k],
+        survival[k] + Se[k],
+        Ga2$Orcolor[k],
+        lwd = 1
+      )
+    )
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        survival[k],
+        pch = Ga2$OrSymbols[k],
+        col = "black",
+        bg = Ga2$Orcolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  text(
+    1.1,
+    0.9,
+    "**",
+    xpd = TRUE,
+    srt = 0,
+    cex = 1.3,
+    col = "#336633"
+  )
+  
+  # Create a legend
+  text(
+    c(0.3, 0.3),
+    c(0.6, 0.56),
+    c("ARIMAS", "CELFIG"),
+    xpd = FALSE,
+    srt = 0,
+    col = "#336633",
+    cex = 0.9
+  )
+  text(
+    c(0.3, 0.3),
+    c(0.52, 0.48),
+    c("AUSCOR", "RIOU"),
+    xpd = FALSE,
+    srt = 0,
+    col = "#990000",
+    cex = 0.9
+  )
+  text(
+    c(0.5, 0.5),
+    c(0.58, 0.50),
+    "}",
+    srt = 0,
+    cex = 2.3,
+    family = "sans"
+  )
+  text(
+    c(0.6, 0.6),
+    c(0.58, 0.50),
+    c("LC", "HC"),
+    xpd = FALSE,
+    srt = 0,
+    col = c("#336633", "#990000"),
+    cex = 0.9
+  )
+  text(
+    0.35,
+    0.64,
+    "Origin site",
+    srt = 0,
+    cex = 1,
+    family = "sans"
+  )
+}
+
+# Create the variability among populations plots for survival (without legend)
+Survivplot2 <- function() {
+  dat2 = dat1[is.na(dat1$Death) == F, ]
+  # create a new dataset containing survival rate within each cage
+  names(dat2)
+  head(dat2)
+  dat2$t2 = paste(dat2$Transfert, dat2$OriginSite, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, CageID))
+  names(n)[1] <- "CageID"
+  names(n)[2] <- "n"
+  alive <- as.data.frame(dplyr::count(dat2[dat2$Death == "0", ], CageID))
+  dead <- as.data.frame(dplyr::count(dat2[dat2$Death == "1", ], CageID))
+  DeathSum <- dplyr::left_join(alive, dead, by = "CageID")
+  DeathSum$n.y[is.na(DeathSum$n.y)] <- 0
+  DeathSum <- dplyr::left_join(DeathSum, n, by = "CageID")
+  names(DeathSum)[2] <- "alive"
+  names(DeathSum)[3] <- "dead"
+  DeathSum$survival <- DeathSum$alive / DeathSum$n
+  DeathSum <-  dplyr::left_join(DeathSum,
+                         dat2[match(DeathSum$CageID,  dat2$CageID), c(
+                           "CageID",
+                           "OriginSite",
+                           "OriginContam",
+                           "SitesPair",
+                           "CageSiteID",
+                           "CagingSite",
+                           "TransplantContam",
+                           "Injection",
+                           "CxOxI",
+                           "CxO2xI",
+                           "CxO",
+                           "O2xI"
+                         )], by = "CageID")
+  
+  names(DeathSum)
+  DeathSum$t2 = paste(DeathSum$OriginSite, DeathSum$TransplantContam, sep =
+                        "_")
+  n = as.data.frame(dplyr::count(DeathSum, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(DeathSum$survival, list(DeathSum$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "survival"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("OriginSite", "TransplantContam"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$OriginSite, Ga$TransplantContam, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(DeathSum$survival, list(DeathSum$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$OriginContam = c("LC", "LC", "HC", "HC", "LC", "LC", "HC", "HC")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2$Or = paste(Ga2$OriginContam, Ga2$TransplantContam, sep = "_")
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$OriginSite, Ga2$TransplantContam, sep = "_")
+  Ga2$Orcolor <-
+    ifelse(Ga2$OriginContam == "LC", "#336633", "#990000")
+  Ga2$OrSymbols <-
+    ifelse(Ga2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             Ga2$OriginSite == "AUSCOR",
+             22,
+             ifelse(Ga2$OriginSite == "CELFIG", 23, 21)
+           ))
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  
+  # Create a custom jitter
+  jitt = 0.3
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create a break interval on Y axis
+  breakInt = c(0.2, 0.7)
+  ylim = c(0, 1)
+  step = 0.1
+  
+  plotScale <- seq(ylim[1], ylim[2], by = step)
+  plotScale <-
+    plotScale[which(plotScale <= breakInt[1] |
+                      plotScale >= breakInt[2])]
+  toAdd <- length(which(plotScale <= breakInt[1]))
+  finalScale <- seq(breakInt[2], ylim[2], by = step)
+  toAddfinal <- c()
+  for (h in (seq(toAdd))) {
+    toAdd_temp <- min(finalScale) - (step * h)
+    toAddfinal <- c(toAddfinal, toAdd_temp)
+  }
+  finalScale <- sort(c(toAddfinal, finalScale))
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(min(finalScale), max(finalScale))
+  )
+  
+  title(
+    ylab = "Survival",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  # draw y axis
+  plotScale <- as.character(plotScale)
+  plotScale[which(plotScale == "1")] <- "1.0"
+  plotScale[which(plotScale == "0")] <- "0.0"
+  segments(
+    x0 = 0,
+    y0 = max(breakInt) - 5 / 100 * max(breakInt),
+    x1 = 0,
+    y1 = 1
+  )
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 0,
+    y1 = max(breakInt) - 10 / 100 * max(breakInt)
+  )
+  text(0,
+       max(breakInt) - 5 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(0,
+       max(breakInt) - 10 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    as.character(plotScale),
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 2,
+    y1 = min(finalScale)
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[j],
+        survival[j],
+        CNumJitter[j + 1],
+        survival[j + 1],
+        Ga2$Orcolor[j],
+        lwd = 2
+      )
+    )
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[k],
+        survival[k] - Se[k],
+        CNumJitter[k],
+        survival[k] + Se[k],
+        Ga2$Orcolor[k],
+        lwd = 1
+      )
+    )
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        survival[k],
+        pch = Ga2$OrSymbols[k],
+        col = "black",
+        bg = Ga2$Orcolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  text(
+    1.1,
+    0.9,
+    "**",
+    xpd = TRUE,
+    srt = 0,
+    cex = 1.3,
+    col = "#336633"
+  )
+  
+}
+
+# Create the variability among populations plots for bioacc (without legend)
+BioaccPlot1 <- function() {
+  dat2 = dat1[is.na(dat1$MuscleCd) == F, ]
+  dat2$Cdscaled = scale(log(dat2$MuscleCd),
+                        center = T,
+                        scale = T)
+  dat2$Cuscaled = scale(log(dat2$MuscleCu),
+                        center = T,
+                        scale = T)
+  dat2$Znscaled = scale(log(dat2$MuscleZn),
+                        center = T,
+                        scale = T)
+  dat2$Bioacc = dat2$Cdscaled + dat2$Cuscaled + dat2$Znscaled
+  dat2$t2 = paste(dat2$OriginSite, dat2$TransplantContam, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(dat2$Bioacc, list(dat2$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "Bioacc"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("OriginSite", "TransplantContam"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$OriginSite, Ga$TransplantContam, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(dat2$Bioacc, list(dat2$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$OriginContam = c("LC", "LC", "HC", "HC", "LC", "LC", "HC", "HC")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2$Or = paste(Ga2$OriginContam, Ga2$TransplantContam, sep = "_")
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$OriginSite, Ga2$TransplantContam, sep = "_")
+  Ga2$Orcolor <-
+    ifelse(Ga2$OriginContam == "LC", "#336633", "#990000")
+  Ga2$OrSymbols <-
+    ifelse(Ga2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             Ga2$OriginSite == "AUSCOR",
+             22,
+             ifelse(Ga2$OriginSite == "CELFIG", 23, 21)
+           ))
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  
+  # Create a custom jitter
+  jitt = 0.3
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(-2, 2)
+  )
+  
+  title(
+    ylab = "Metal bioaccumulation",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  
+  # draw y axis
+  plotScale <- c("-2.0", "-1.0", "0.0", "1.0", "2.0")
+  segments(x0 = 0,
+           y0 = -2,
+           x1 = 0,
+           y1 = 2)
+  text(
+    rep(0, length(plotScale)),
+    as.numeric(plotScale),
+    plotScale,
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    as.numeric(plotScale),
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = -2,
+    x1 = 2,
+    y1 = -2
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(Ga2,
+         segments(
+           CNumJitter[j],
+           Bioacc[j],
+           CNumJitter[j + 1],
+           Bioacc[j + 1],
+           Ga2$Orcolor[j],
+           lwd = 2
+         ))
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[k],
+        Bioacc[k] - Se[k],
+        CNumJitter[k],
+        Bioacc[k] + Se[k],
+        Ga2$Orcolor[k],
+        lwd = 1
+      )
+    )
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        Bioacc[k],
+        pch = Ga2$OrSymbols[k],
+        col = "black",
+        bg = Ga2$Orcolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  text(
+    c(1.1, 1.1),
+    c(0.9,-0.7),
+    "*",
+    xpd = TRUE,
+    srt = 0,
+    cex = 1.3,
+    col = "#336633"
+  )
+  
+  # Create a legend
+  #text(c(0.3,0.3), c(0.6,0.56), c("ARIMAS", "CELFIG"), xpd = FALSE, srt = 0, col= "#336633", cex = 0.9)
+  #text(c(0.3,0.3), c(0.52,0.48), c("AUSCOR", "RIOU"), xpd = FALSE, srt = 0, col= "#990000", cex = 0.9)
+  #text(c(0.5,0.5), c(0.58,0.50), "}", srt = 0, cex = 2.3, family = "sans")
+  #text(c(0.6,0.6), c(0.58,0.50), c("LC", "HC"), xpd = FALSE, srt = 0, col= c("#336633", "#990000"), cex = 0.9)
+  #text(0.35, 0.64, "Origin site", srt = 0, cex = 1, family = "sans")
+}
+
+# Create the Multiple stressors plot for bioacc (without legend)
+BioaccPlot2 <- function() {
+  dat2 = dat1[is.na(dat1$MuscleCd) == F, ]
+  dat2$Cdscaled = scale(log(dat2$MuscleCd),
+                        center = T,
+                        scale = T)
+  dat2$Cuscaled = scale(log(dat2$MuscleCu),
+                        center = T,
+                        scale = T)
+  dat2$Znscaled = scale(log(dat2$MuscleZn),
+                        center = T,
+                        scale = T)
+  dat2$Bioacc = dat2$Cdscaled + dat2$Cuscaled + dat2$Znscaled
+  names(dat2)
+  dat2$t2 = paste(dat2$TransplantContam, dat2$Injection, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(dat2$Bioacc, list(dat2$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "Bioacc"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("TransplantContam", "Injection"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$TransplantContam, Ga$Injection, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(dat2$Bioacc, list(dat2$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$Injection = c("AMIX", "PBS", "AMIX", "PBS")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$TransplantContam, Ga2$Injection, sep = "_")
+  Ga2$Injectioncolor <-
+    ifelse(Ga2$Injection == "PBS", "#808080", "#000000")
+  Ga2$InjectionSymbols <-
+    ifelse(Ga2$Injection == "PBS", 4, 4)
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  Ga2$lty <- ifelse(Ga2$Injection == "PBS", 2, 1)
+  Ga2 <- Ga2[order(Ga2$Injection), ]
+  # Create a custom jitter
+  jitt = 0.2
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(-2, 2)
+  )
+  
+  title(
+    ylab = "Metal bioaccumulation",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  
+  # draw y axis
+  plotScale <- c("-2.0", "-1.0", "0.0", "1.0", "2.0")
+  segments(x0 = 0,
+           y0 = -2,
+           x1 = 0,
+           y1 = 2)
+  text(
+    rep(0, length(plotScale)),
+    as.numeric(plotScale),
+    plotScale,
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    as.numeric(plotScale),
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = -2,
+    x1 = 2,
+    y1 = -2
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[j],
+        Bioacc[j],
+        CNumJitter[j + 1],
+        Bioacc[j + 1],
+        Ga2$Injectioncolor[j],
+        lty = Ga2$lty[j],
+        lwd = 2
+      )
+    )
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[k],
+        Bioacc[k] - Se[k],
+        CNumJitter[k],
+        Bioacc[k] + Se[k],
+        Ga2$Injectioncolor[k],
+        lwd = 1
+      )
+    )
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        Bioacc[k],
+        pch = InjectionSymbols[k],
+        col = "black",
+        bg = Injectioncolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  text(
+    1.1,
+    -0.0,
+    "*",
+    xpd = TRUE,
+    srt = 0,
+    cex = 1.5,
+    col = "#808080"
+  )
+  
+  # Create a legend
+  #text(c(0.3,0.3), c(-1.4,-1.6), c("PBS", "AMIX"), xpd = FALSE, srt = 0, col= c("#808080", "#000000"), cex = 0.9, family = "sans")
+  #text(c(0.6,0.6), c(0.58,0.50), c("LC", "HC"), xpd = FALSE, srt = 0, col= c("#336633", "#990000"), cex = 0.9)
+  #text(0.43, -1.2, "Imm. Challenge", srt = 0, cex = 1, family = "sans")
+  #segments(0.4,-1.42,
+  #0.6,-1.42,
+  #"#808080",
+  #lwd = 2)
+  #segments(0.4,-1.62,
+  #0.6,-1.62,
+  #"#000000",
+  #lwd = 2)
+}
+
+# Create the Multiple stressors plot for bioacc (with legend)
+BioaccPlot3 <- function() {
+  plot.new()
+  opar <- par(no.readonly = TRUE)
+  BioaccPlot2()
+  legend2()
+  par(opar)
+}
+
+# Create the variability among populations plots for neutrophils/lymphocytes ratio 
+NLratioPlot1 <- function() {
+  dat2 = dat1[is.na(dat1$Lymphocytes) == F, ]
+  dat2 = dat2[is.na(dat2$Neutrophils) == F, ]
+  dat2$NLRatio = dat2$Neutrophils / dat2$Lymphocytes
+  # scale numeric variables
+  dat2$NLRatio = scale(dat2$NLRatio, center = TRUE, scale = TRUE)
+  dat2$NLRatio.p <-
+    bimixt::boxcox(dat2$NLRatio + 1, car::powerTransform(dat2$NLRatio + 1)$lambda)
+  dat2$t2 = paste(dat2$OriginSite, dat2$TransplantContam, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(dat2$NLRatio.p, list(dat2$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "NLRatio.p"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("OriginSite", "TransplantContam"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$OriginSite, Ga$TransplantContam, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(dat2$NLRatio.p, list(dat2$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$OriginContam = c("LC", "LC", "HC", "HC", "LC", "LC", "HC", "HC")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2$Or = paste(Ga2$OriginContam, Ga2$TransplantContam, sep = "_")
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$OriginSite, Ga2$TransplantContam, sep = "_")
+  Ga2$Orcolor <-
+    ifelse(Ga2$OriginContam == "LC", "#336633", "#990000")
+  Ga2$OrSymbols <-
+    ifelse(Ga2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             Ga2$OriginSite == "AUSCOR",
+             22,
+             ifelse(Ga2$OriginSite == "CELFIG", 23, 21)
+           ))
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  
+  # Create a custom jitter
+  jitt = 0.3
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(-1.5, 0.5)
+  )
+  
+  title(
+    ylab = "NL inflammatory immune response",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  
+  # draw y axis
+  plotScale <- c("-1.5", "-1.0", "-0.5", "0.0", "0.5")
+  segments(
+    x0 = 0,
+    y0 = -1.5,
+    x1 = 0,
+    y1 = 0.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    as.numeric(plotScale),
+    plotScale,
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    as.numeric(plotScale),
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = -1.5,
+    x1 = 2,
+    y1 = -1.5
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[j],
+        NLRatio.p[j],
+        CNumJitter[j + 1],
+        NLRatio.p[j + 1],
+        Ga2$Orcolor[j],
+        lwd = 2
+      )
+    )
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(
+      Ga2,
+      segments(
+        CNumJitter[k],
+        NLRatio.p[k] - Se[k],
+        CNumJitter[k],
+        NLRatio.p[k] + Se[k],
+        Ga2$Orcolor[k],
+        lwd = 1
+      )
+    )
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        NLRatio.p[k],
+        pch = Ga2$OrSymbols[k],
+        col = "black",
+        bg = Ga2$Orcolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  #text(c(1.1, 1.1), c(0.9, -0.7),   "*", xpd = TRUE, srt = 0, cex = 1.3, col = "#336633")
+  # Create a legend
+  #text(c(0.3,0.3), c(0.6,0.56), c("ARIMAS", "CELFIG"), xpd = FALSE, srt = 0, col= "#336633", cex = 0.9)
+  #text(c(0.3,0.3), c(0.52,0.48), c("AUSCOR", "RIOU"), xpd = FALSE, srt = 0, col= "#990000", cex = 0.9)
+  #text(c(0.5,0.5), c(0.58,0.50), "}", srt = 0, cex = 2.3, family = "sans")
+  #text(c(0.6,0.6), c(0.58,0.50), c("LC", "HC"), xpd = FALSE, srt = 0, col= c("#336633", "#990000"), cex = 0.9)
+  #text(0.35, 0.64, "Origin site", srt = 0, cex = 1, family = "sans")
+}
+
+# Create the variability among populations plots for available energy (sum of lipid, protein and carbohydrate) 
+AvailEnerPlot1 <- function() {
+  dat2 = dat1[is.na(dat1$AvailableEnerJ) == F, ]
+  dat2$t2 = paste(dat2$OriginSite, dat2$TransplantContam, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(log(dat2$AvailableEnerJ + 1), list(dat2$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "log(AvailableEnerJ)"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("OriginSite", "TransplantContam"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$OriginSite, Ga$TransplantContam, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(log(dat2$AvailableEnerJ + 1), list(dat2$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$OriginContam = c("LC", "LC", "HC", "HC", "LC", "LC", "HC", "HC")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2$Or = paste(Ga2$OriginContam, Ga2$TransplantContam, sep = "_")
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$OriginSite, Ga2$TransplantContam, sep = "_")
+  Ga2$Orcolor <-
+    ifelse(Ga2$OriginContam == "LC", "#336633", "#990000")
+  Ga2$OrSymbols <-
+    ifelse(Ga2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             Ga2$OriginSite == "AUSCOR",
+             22,
+             ifelse(Ga2$OriginSite == "CELFIG", 23, 21)
+           ))
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  names(Ga2)[3] <- "AE"
+  # Create a custom jitter
+  jitt = 0.3
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create a break interval on Y axis
+  breakInt = c(0, 8)
+  ylim = c(0, 9)
+  step = 0.2
+  
+  plotScale <- seq(ylim[1], ylim[2], by = step)
+  plotScale <-
+    plotScale[which(plotScale <= breakInt[1] |
+                      plotScale >= breakInt[2])]
+  toAdd <- length(which(plotScale <= breakInt[1]))
+  finalScale <- seq(breakInt[2], ylim[2], by = step)
+  toAddfinal <- c()
+  for (h in (seq(toAdd))) {
+    toAdd_temp <- min(finalScale) - (step * h)
+    toAddfinal <- c(toAddfinal, toAdd_temp)
+  }
+  finalScale <- sort(c(toAddfinal, finalScale))
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(min(finalScale), max(finalScale))
+  )
+  
+  title(
+    ylab = "Available energy",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  
+  # draw y axis
+  plotScale <- as.character(plotScale)
+  plotScale[which(plotScale == "9")] <- "9.0"
+  plotScale[which(plotScale == "8")] <- "8.0"
+  plotScale[which(plotScale == "0")] <- "0.0"
+  segments(
+    x0 = 0,
+    y0 = max(breakInt) - 1 / 100 * max(breakInt),
+    x1 = 0,
+    y1 = max(as.numeric(plotScale))
+  )
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 0,
+    y1 = max(breakInt) - 1.5 / 100 * max(breakInt)
+  )
+  text(0,
+       max(breakInt) - 1 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(0,
+       max(breakInt) - 1.5 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    as.character(plotScale),
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 2,
+    y1 = min(finalScale)
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(Ga2,
+         segments(CNumJitter[j],
+                  AE[j],
+                  CNumJitter[j + 1],
+                  AE[j + 1],
+                  Ga2$Orcolor[j],
+                  lwd = 2))
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(Ga2,
+         segments(
+           CNumJitter[k],
+           AE[k] - Se[k],
+           CNumJitter[k],
+           AE[k] + Se[k],
+           Ga2$Orcolor[k],
+           lwd = 1
+         ))
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        AE[k],
+        pch = Ga2$OrSymbols[k],
+        col = "black",
+        bg = Ga2$Orcolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  text(
+    c(1.1),
+    c(8.25),
+    "*",
+    xpd = TRUE,
+    srt = 0,
+    cex = 1.5,
+    col = "#336633"
+  )
+  text(
+    c(1.1),
+    c(8.45),
+    "*",
+    xpd = TRUE,
+    srt = 0,
+    cex = 1.5,
+    col = "#990000"
+  )
+  
+}
+
+# Create the variability among populations plots for Daily mass change 
+DMCPlot1 <- function() {
+  dat2 = dat1[is.na(dat1$DailyMassChange) == F, ]
+  # transform variable to approx. normality
+  dat2$DailyMassChange.p <-
+    bimixt::boxcox(dat2$DailyMassChange + 3,
+                   car::powerTransform(dat2$DailyMassChange + 3)$lambda)
+  dat2$t2 = paste(dat2$OriginSite, dat2$TransplantContam, sep = "_")
+  n = as.data.frame(dplyr::count(dat2, t2))
+  n
+  names(n)[1] <- "t2"
+  names(n)[2] <- "n"
+  GAmean = aggregate(dat2$DailyMassChange.p, list(dat2$t2) , mean)
+  GAmean
+  names(GAmean)[1] <- "t2"
+  names(GAmean)[2] <- "dat2$DailyMassChange.p"
+  Ga <- dplyr::left_join(GAmean, n, by = "t2")
+  Ga = tidyr::separate(
+    data = Ga,
+    col = t2,
+    into = c("OriginSite", "TransplantContam"),
+    sep = "_"
+  )
+  Ga$t2 = paste(Ga$OriginSite, Ga$TransplantContam, sep = "_")
+  Ga
+  
+  Ga3 = aggregate(dat2$DailyMassChange.p, list(dat2$t2), sd)
+  Ga3
+  names(Ga3)[1] <- "t2"
+  names(Ga3)[2] <- "Sd"
+  Ga2 <- dplyr::left_join(Ga, Ga3, by = "t2")
+  Ga2
+  Ga2$Se = Ga2$Sd / sqrt(Ga2$n)
+  Ga2
+  Ga2$OriginContam = c("LC", "LC", "HC", "HC", "LC", "LC", "HC", "HC")
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "HC")] <- "HC"
+  Ga2$TransplantContam[which(Ga2$TransplantContam == "LC")] <- "LC"
+  Ga2$Or = paste(Ga2$OriginContam, Ga2$TransplantContam, sep = "_")
+  Ga2
+  
+  # define some graphic elements
+  Ga2$treat = paste(Ga2$OriginSite, Ga2$TransplantContam, sep = "_")
+  Ga2$Orcolor <-
+    ifelse(Ga2$OriginContam == "LC", "#336633", "#990000")
+  Ga2$OrSymbols <-
+    ifelse(Ga2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             Ga2$OriginSite == "AUSCOR",
+             22,
+             ifelse(Ga2$OriginSite == "CELFIG", 23, 21)
+           ))
+  Ga2$Contcolor <-
+    ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
+  Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
+  names(Ga2)[3] <- "DMC"
+  # Create a custom jitter
+  jitt = 0.3
+  for (x in seq(nrow(Ga2))) {
+    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  }
+  
+  # Create a break interval on Y axis
+  breakInt = c(0.0, 0.8)
+  ylim = c(0, 1.8)
+  step = 0.2
+  
+  plotScale <- seq(ylim[1], ylim[2], by = step)
+  plotScale <-
+    plotScale[which(plotScale <= breakInt[1] |
+                      plotScale >= breakInt[2])]
+  toAdd <- length(which(plotScale <= breakInt[1]))
+  finalScale <- seq(breakInt[2], ylim[2], by = step)
+  toAddfinal <- c()
+  for (h in (seq(toAdd))) {
+    toAdd_temp <- min(finalScale) - (step * h)
+    toAddfinal <- c(toAddfinal, toAdd_temp)
+  }
+  finalScale <- sort(c(toAddfinal, finalScale))
+  
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(min(finalScale), max(finalScale))
+  )
+  
+  title(
+    ylab = "Daily mass change",
+    line = 1.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  title(
+    xlab = "Transplant site",
+    line = 0.5,
+    cex.lab = 1.2,
+    family = "sans"
+  )
+  
+  # draw y axis
+  plotScale <- as.character(plotScale)
+  plotScale[which(plotScale == "1")] <- "1.0"
+  plotScale[which(plotScale == "0")] <- "0.0"
+  segments(
+    x0 = 0,
+    y0 = max(breakInt) - 10 / 100 * max(breakInt),
+    x1 = 0,
+    y1 = max(as.numeric(plotScale))
+  )
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 0,
+    y1 = max(breakInt) - 15 / 100 * max(breakInt)
+  )
+  text(0,
+       max(breakInt) - 10 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(0,
+       max(breakInt) - 15 / 100 * max(breakInt),
+       "\\",
+       xpd = F,
+       srt = 90)
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    as.character(plotScale),
+    xpd = TRUE,
+    srt = 0,
+    adj = 1.5
+  )
+  text(
+    rep(0, length(plotScale)),
+    finalScale,
+    "-",
+    xpd = TRUE,
+    srt = 0,
+    adj = 0.9
+  )
+  
+  # draw x axis and add x axis labels
+  segments(
+    x0 = 0,
+    y0 = min(finalScale),
+    x1 = 2,
+    y1 = min(finalScale)
+  )
+  for (i in unique(Ga2$TransplantContam)) {
+    with(Ga2,
+         mtext(
+           i,
+           side = 1,
+           line = 0,
+           at = unique(CNum[which(TransplantContam == i)]),
+           col = unique(Contcolor[which(TransplantContam == i)]),
+           family = "sans",
+           cex = 1.2
+         ))
+  }
+  
+  # Add reaction norm
+  for (j in seq(1, nrow(Ga2), by = 2)) {
+    with(Ga2,
+         segments(CNumJitter[j],
+                  DMC[j],
+                  CNumJitter[j + 1],
+                  DMC[j + 1],
+                  Ga2$Orcolor[j],
+                  lwd = 2))
+  }
+  # Add error bar and symbols at the origin and end of reaction norm
+  for (k in seq(nrow(Ga2))) {
+    with(Ga2,
+         segments(
+           CNumJitter[k],
+           DMC[k] - Se[k],
+           CNumJitter[k],
+           DMC[k] + Se[k],
+           Ga2$Orcolor[k],
+           lwd = 1
+         ))
+    with(
+      Ga2,
+      points(
+        CNumJitter[k],
+        DMC[k],
+        pch = Ga2$OrSymbols[k],
+        col = "black",
+        bg = Ga2$Orcolor[k],
+        cex = 2
+      )
+    )
+  }
+  
+  # Add significance stars above NC fish slopes
+  #text(c(1.1), c(8.25),   "*", xpd = TRUE, srt = 0, cex = 1.5, col = "#336633")
+  #text(c(1.1), c(8.45),   "*", xpd = TRUE, srt = 0, cex = 1.5, col = "#990000")
+  
+}
+
+# Create panel plot to groups variability among populations plots (survival +  bioacc + NLRatio)
+Fig1Merged <- function() {
+  plot.new()
+  opar <- par(no.readonly = TRUE)
+  par(
+    mfrow = c(2, 2),
+    # 2x2 layout
+    oma = c(1, 1, 1, 1),
+    # two rows of text at the outer left and bottom margin
+    mar = c(1, 1, 1, 0),
+    # space for one row of text at ticks and to tidyr::separate plots
+    mgp = c(3, 1, 0),
+    # axis label at 2 rows distance, tick labels at 1 row
+    mai = c(0.1, 0.3, 0.1, 0.15),
+    xpd = NA,
+    # allow content to protrude into outer margin (and beyond)
+    family = "sans"
+  )
+  
+  Survivplot2()
+  text(0.1,
+       1.0,
+       "A",
+       srt = 0,
+       cex = 1.2,
+       family = "sans")
+  BioaccPlot1()
+  text(0.1,
+       2.0,
+       "B",
+       srt = 0,
+       cex = 1.2,
+       family = "sans")
+  NLratioPlot1()
+  text(0.1,
+       0.5,
+       "C",
+       srt = 0,
+       cex = 1.2,
+       family = "sans")
+  legend()
+  
+  par(opar)
+}
+
+# Create a panel plot to groups variability among populations plots (in supplementary material - available energy + daily mass loss)
+Fig3Merged <- function() {
+  plot.new()
+  opar <- par(no.readonly = TRUE)
+  par(
+    mfrow = c(1, 2),
+    # 1x2 layout
+    oma = c(1, 1, 1, 1),
+    # two rows of text at the outer left and bottom margin
+    mar = c(1, 1, 1, 0),
+    # space for one row of text at ticks and to tidyr::separate plots
+    mgp = c(3, 1, 0),
+    # axis label at 2 rows distance, tick labels at 1 row
+    mai = c(0.1, 0.5, 0.1, 0.15),
+    xpd = NA,
+    # allow content to protrude into outer margin (and beyond)
+    family = "sans"
+  )
+  AvailEnerPlot1()
+  text(0.1,
+       9.0,
+       "A",
+       srt = 0,
+       cex = 1.2,
+       family = "sans")
+  legend3()
+  DMCPlot1()
+  text(0.1,
+       1.8,
+       "B",
+       srt = 0,
+       cex = 1.2,
+       family = "sans")
+  par(opar)
+}
+
+# create a legend for variability among populations plots (survival +  bioacc + NLRatio)
+legend <- function() {
+  # Create an empty plot
+  plot(
+    NULL,
+    ylab = "",
+    xlab = "",
+    axes = FALSE,
+    xlim = c(0, 2),
+    ylim = c(0.4, 1)
+  )
+  # Create a legend
+  text(
+    c(1, 1),
+    c(0.71, 0.63),
+    c("ARIMAS", "CELFIG"),
+    xpd = FALSE,
+    srt = 0,
+    col = "#336633",
+    cex = 1.2
+  )
+  text(
+    c(1, 1),
+    c(0.55, 0.47),
+    c("AUSCOR", "RIOU"),
+    xpd = FALSE,
+    srt = 0,
+    col = "#990000",
+    cex = 1.2
+  )
+  points(
+    c(0.6, 0.6, 0.6, 0.6),
+    c(0.71, 0.63, 0.55, 0.47),
+    pch = c(24, 23, 22, 21),
+    bg = c("#336633", "#336633", "#990000", "#990000"),
+    col = "black",
+    cex = 2
+  )
+  text(
+    c(1.4, 1.4),
+    c(0.67, 0.51),
+    "}",
+    srt = 0,
+    cex = 3.5,
+    family = "sans"
+  )
+  text(
+    c(1.6, 1.6),
+    c(0.67, 0.51),
+    c("LC", "HC"),
+    xpd = FALSE,
+    srt = 0,
+    col = c("#336633", "#990000"),
+    cex = 1.2
+  )
+  text(
+    1.1,
+    0.8,
+    "Origin site",
+    srt = 0,
+    cex = 1.4,
+    family = "sans"
+  )
+}
+
+# create a legend for Multiple stressors plots (Bioacc + NLRatio)
+legend2 <- function() {
+  # Create a legend
+  text(
+    c(0.3, 0.3),
+    c(-1.5, -1.7),
+    c("PBS", "AMIX"),
+    xpd = FALSE,
+    srt = 0,
+    col = c("#808080", "#000000"),
+    cex = 0.9,
+    family = "sans"
+  )
+  text(
+    0.43,
+    -1.3,
+    "Imm. Challenge",
+    srt = 0,
+    cex = 1,
+    family = "sans"
+  )
+  segments(0.5, -1.52,
+           0.7, -1.52,
+           "#808080",
+           lty = 2,
+           lwd = 2)
+  segments(0.5, -1.72,
+           0.7, -1.72,
+           "#000000",
+           lwd = 2)
+}
+
+# create a legend for variability among populations plots (in supplementary material - available energy + daily mass loss)
+legend3 <- function() {
+  # Create a legend
+  text(
+    c(0.45, 0.45),
+    c(8.91, 8.83),
+    c("ARIMAS", "CELFIG"),
+    xpd = FALSE,
+    srt = 0,
+    col = "#336633",
+    cex = 1
+  )
+  text(
+    c(1.46, 1.46),
+    c(8.91, 8.83),
+    c("AUSCOR", "RIOU"),
+    xpd = FALSE,
+    srt = 0,
+    col = "#990000",
+    cex = 1
+  )
+  points(
+    c(0.1, 0.1, 1.10, 1.10),
+    c(8.91, 8.83, 8.91, 8.83),
+    pch = c(24, 23, 22, 21),
+    bg = c("#336633", "#336633", "#990000", "#990000"),
+    col = "black",
+    cex = 1.5
+  )
+  text(
+    c(0.75, 1.79),
+    c(8.87, 8.87),
+    "}",
+    srt = 0,
+    cex = 3.5,
+    family = "sans"
+  )
+  text(
+    c(0.95, 2.0),
+    c(8.87, 8.87),
+    c("LC", "HC"),
+    xpd = FALSE,
+    srt = 0,
+    col = c("#336633", "#990000"),
+    cex = 1
+  )
+  text(
+    1.05,
+    8.97,
+    "Origin site",
+    srt = 0,
+    cex = 1.2,
+    family = "sans"
+  )
+}
+
+# NB: to plot an element run the selected function, e.g., BioaccPlot1() 
+```
+
+# Load the dataset
+```{r dataset}
+dat1 <- read.csv2(paste(getwd(), 
+                       "Dataset_Petitjeanetal.-Adaptive_responses_of_fish_in_multistress_context.csv", 
+                       sep = "/"), dec = ".", sep = ";")
+
+# specify that the cage Id is a factor instead of numeric to use it as random intercept in mixed effect models
+dat1[["CageSiteID"]] <- as.factor(dat1[["CageSiteID"]])
+
+# Add merged treatments variables
+dat1$CxOxI = paste(dat1$TransplantContam, dat1$OriginSite, dat1$Injection, sep = "_")
+dat1$CxO2xI = paste(dat1$TransplantContam,
+                    dat1$OriginContam,
+                    dat1$Injection,
+                    sep = "_")
+dat1$CxO = paste(dat1$TransplantContam, dat1$OriginSite, sep = "_")
+dat1$CxO2 = paste(dat1$TransplantContam, dat1$OriginContam, sep = "_")
+dat1$CxI = paste(dat1$TransplantContam, dat1$Injection, sep = "_")
+dat1$O2xI = paste(dat1$OriginContam, dat1$Injection, sep = "_")
+head(dat1,5)
+
+```
+# Check sample size per treatments 
+## Including escaped fish
+```{r sampleSize1}
+tab1 <- data.frame(table(dat1$OriginSite, dat1$CagingSite, dat1$OriginContam, dat1$TransplantContam, dat1$Injection))
+names(tab1) <- c("Origin site",	"Transplant site",	"Contamination level in origin site", 	"Contamination level in transplant site",	"Immune challenge", "Sample size")
+tab1 <- tab1[which(tab1[["Sample size"]]>0),]
+tab1 <- tab1[order(tab1[["Origin site"]], tab1[["Transplant site"]]),]
+rownames(tab1) <- NULL
+kableExtra::kable_classic(kableExtra::kbl(tab1), bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F,  html_font = "arial", font_size = 10)
+# total sample size: 
+sum(tab1[["Sample size"]])
+```
+## Excluding escaped fish
+```{r sampleSize2}
+dat1bis = dat1[dat1$Escaped == "No", ]
+tab2 <- data.frame(table(dat1bis$OriginSite, dat1bis$CagingSite, dat1bis$OriginContam, dat1bis$TransplantContam, dat1bis$Injection))
+names(tab2) <- c("Origin site",	"Transplant site",	"Contamination level in origin site", 	"Contamination level in transplant site",	"Immune challenge", "Sample size")
+tab2 <- tab2[which(tab2[["Sample size"]]>0),]
+tab2 <- tab2[order(tab2[["Origin site"]], tab2[["Transplant site"]]),]
+rownames(tab2) <- NULL
+kableExtra::kable_classic(kableExtra::kbl(tab2), bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F,  html_font = "arial",  font_size = 10)
+# total sample size: 
+sum(tab2[["Sample size"]])
+```
+
+# Test some basics 
+ here we will test the design of the experiment.\
+ A quick reminder:\
+
+ - Treatments (fixed effects):\
+    - TransplantContam (transplant treatment either High contamination-HC or Low contamination-LC)\
+    - OriginContam (Origin of the population either High contamination-HC or Low contamination-LC)\
+    - Injection (control saline: PBS, antigen mixture: AMIX)\
+
+ - Covariates :\
+    - SizeEnd (Fish size at the end of the experiment)\
+    - Sex (Fish sex determined by visual inspection at the end of the experiment)\
+
+ - Blocks (random effects):\
+    - CagingSite (The name of the study site where fish are caged, either ARIMAS, AUSCOR, CELFIG or RIOU)\
+    - CageSiteID (The ID number ranging from 1 to 6 corresponding to the number of the cage within each study site)\
+    - OriginSite (The name of the site where each population were sampled = population ID)\
+
+## Test Distribution of fish sex among cages\
+sex determination was performed at the end of the experiment: visual inspection of the gonads
+
+```{r SexTabs}
+dat2 = dat1[is.na(dat1$Sex) == F, ]
+sexTabCage = table(dat2$CageID, dat2$Sex)
+sexTabOrigin = table(dat2$OriginContam, dat2$Sex)
+sexTabTransplant = table(dat2$TransplantContam, dat2$Sex)
+sexTabInj = table(dat2$Injection, dat2$Sex)
+sexTabTriple = table(dat2$CxO2xI, dat2$Sex)
+```
+### Visualize the data
+```{r SexViz}
+par(mfrow=c(3,2))
+plot(sexTabCage, main = "Cage number", ylab = "sex")
+plot(sexTabOrigin, main = "Origin site", ylab = "sex")
+plot(sexTabTransplant, main = "Transplant site", ylab = "sex")
+plot(sexTabInj, main = "Injection", ylab = "sex")
+plot(sexTabTriple, main = "All_treatments", ylab = "sex")
+```
+### Test sex distribution among cages using Chi square test
+```{r SexChiCages}
+chi = chisq.test(sexTabCage)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+```
+While some cages contains more female than male, the global pattern is not significant\
+since Chi-squared approximation may be incorrect, run fisher exact test to confirm this result :\
+```{r SexfisherCages}
+fisher.test(sexTabCage, simulate.p.value = TRUE)
+```
+Fisher test is non-significant, which confirm the result of the Chisquare-test
+
+### What about sex distribution among treatments: origin ?
+```{r SexChiOrigin}
+chi = chisq.test(sexTabOrigin)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+```
+As observed on the plot and as confirmed by chisquare test,\
+distribution of male and female is balanced among populations origin
+
+### What about sex distribution among treatments: TransplantContam ?
+```{r sexTabTransplant}
+chi = chisq.test(sexTabTransplant)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+```
+As observed on the plot and as confirmed by chisquare test,\
+distribution of male and female is balanced between TransplantContam treatments
+
+### What about sex distribution among treatments: Injection ?
+```{r sexTabInj}
+chi = chisq.test(sexTabInj)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+```
+As observed on the plot and as confirmed by chisquare test,\
+distribution of male and female is balanced between Injection treatments
+
+### What about sex distribution among treatments: triple combination of treatments ?
+```{r sexTabTriple}
+chi = chisq.test(sexTabTriple)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+```
+As observed on the plot and as confirmed by chisquare test,\
+distribution of male and female is more or less balanced among treatments
+
+## Test distribution of fish weight among treatments (at the beginning of the experiment, using WeightStart)
+Visualize the data
+```{r fishWeightViz}
+dat2 <- dat1[is.na(dat1$WeightStart) == F, ]
+par(mfrow = c(2, 2))
+hist(log(dat2$WeightStart), 
+     main = "WeightStart distribution (log-transformed)")
+boxplot(log(WeightStart) ~ OriginContam,
+        data = dat2,
+        main = "WeightStart vs. \nContam. level at origin site (log-transformed)")
+boxplot(log(WeightStart) ~ TransplantContam,
+        data = dat2,
+        main = "WeightStart vs. \nContam. level at transplant site (log-transformed)")
+boxplot(log(WeightStart) ~ Injection, 
+        data = dat2, 
+        main = "WeightStart vs. \nimmune challenge (log-transformed)")
+```
+Create the full model
+```{r fishWeightModelFull}
+mod1 <- lme4::lmer(
+  log(WeightStart) ~ TransplantContam * OriginContam * Injection +
+  (1 | CagingSite / CageSiteID) + (1 | OriginSite),
+  data = dat2
+)
+performance::check_model(mod1)
+car::Anova(mod1, type = "3")
+summary(mod1)
+```
+now, refine the model using AIC
+```{r fishWeightModelRefined}
+mod1 =lme4::lmer(
+  log(WeightStart) ~ TransplantContam * OriginContam * Injection +
+  (1 | CagingSite / CageSiteID) + (1 | OriginSite),
+  data = dat2, 
+  REML = FALSE,
+  na.action = "na.fail"
+)
+MuMIn::dredge(mod1, rank = "AIC")
+```
+The best model is the null model meaning that fish mass were not significantly different among treatments\
+run the model with simple treatments effect to obtain NS p-value (reported in material & methods)
+```{r fishWeightModelfinal}
+mod2 = lme4::lmer(
+  log(WeightStart) ~ TransplantContam + OriginContam + Injection +
+  (1 | CagingSite / CageSiteID) + (1 | OriginSite),
+  data = dat2, 
+)
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+Compute mean and Sd of fish Weight (reported in material & methods)
+```{r fishWeightMeanSd}
+mean(dat2$WeightStart)
+sd(dat2$WeightStart)
+```
+
+## Test Distribution of fish size among treatments (at the beginning of the experiment, using SizeStart)
+Visualize the data
+```{r fishSizeViz}
+dat2 = dat1[is.na(dat1$SizeStart) == F, ]
+par(mfrow = c(2, 2))
+hist(log(dat2$SizeStart), 
+     main = "SizeStart distribution (log-transformed)")
+boxplot(log(SizeStart) ~ OriginContam,
+        data = dat2,
+        main = "SizeStart vs. \nContam. level at origin site (log-transformed)")
+boxplot(log(SizeStart) ~ TransplantContam,
+        data = dat2,
+        main = "SizeStart vs. \nContam. level at transplant site (log-transformed)")
+boxplot(log(SizeStart) ~ Injection, 
+        data = dat2, 
+        main = "SizeStart vs. \nimmune challenge (log-transformed)")
+```
+Create the full model
+```{r fishSizeModelFull}
+mod1 <- lme4::lmer(
+  log(SizeStart) ~ TransplantContam * OriginContam * Injection +
+  (1 | CagingSite / CageSiteID) + (1 | OriginSite),
+  data = dat2
+)
+performance::check_model(mod1)
+car::Anova(mod1, type = "3")
+summary(mod1)
+```
+now, refine the model using AIC
+```{r fishSizeModelRefined}
+mod1 =lme4::lmer(
+  log(SizeStart) ~ TransplantContam * OriginContam * Injection +
+  (1 | CagingSite / CageSiteID) + (1 | OriginSite),
+  data = dat2, 
+  REML = FALSE,
+  na.action = "na.fail"
+)
+MuMIn::dredge(mod1, rank = "AIC")
+```
+The best model is the null model meaning that fish mass were not significantly different among treatments\
+run the model with simple treatments effect to obtain NS p-value (reported in material & methods)
+```{r fishSizeModelfinal}
+mod2 = lme4::lmer(
+  log(SizeStart) ~ TransplantContam + OriginContam + Injection +
+  (1 | CagingSite / CageSiteID) + (1 | OriginSite),
+  data = dat2, 
+)
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+Compute mean and Sd of fish size (reported in material & methods)
+```{r fishSizeMeanSd}
+mean(dat2$SizeStart)
+sd(dat2$SizeStart)
+```
+##  Test for Crowding
+### Compute mean and Sd of fish density per liter (reported in material & methods)
+
+- At the start of the experiment
+```{r CrowdStart}
+Crowd = aggregate(dat1$WeightStart, list(dat1$CageID), sum)
+Crowd$dens = Crowd$x / 130 # 130 is the volume of the cages in liters
+mean(Crowd$dens) # expressed in grams of fish per liter of water within the cage
+sd(Crowd$dens)
+```
+- At the end of the experiment
+```{r CrowdEnd}
+dat2 = dat1[is.na(dat1$Death) == F, ]
+dat2 = dat2[-c(which(dat2$Death == 1)), ]
+Crowd2 = aggregate(dat2$WeightEnd, list(dat2$CageID), function(x)
+  sum(x, na.rm = T))
+Crowd2$dens = Crowd2$x / 130 # 130 is the volume of the cages in liters
+mean(Crowd2$dens)
+sd(Crowd2$dens)
+```
+### Test for the difference between start and end of the experiment
+```{r CrowdTest}
+CrowdTest = cbind(Crowd$dens, Crowd2$dens)
+chi = chisq.test(CrowdTest)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+# Here the test confirmed that density of fish is not significantly different among cages
+# but since Chi-squared approximation may be incorrect, run fisher exact test to confirm this result :
+fisher.test(round(CrowdTest, 1)*10, simulate.p.value = TRUE) # Round values to the first decimal and multiply by 10 to have integer only (necessary for fisher-test)
+
+```
+Fisher test is non-significant, confirming the result of the Chisquare-test: The density of fish is not significantly different among cages between the start and end of the experiment, hence, While there was some death in several cages, the global pattern is not significant
+
+## Check Toxic Unit (TU) consistency among studies and between the start and end of the experiment
+Retrieve the TU reported in PETITJEAN et al. 2020 a,b (based on water agency database)
+```{r Tu2020}
+Tu2020 = c(-0.9,-0.9,-0.3, 1.3)
+```
+
+Retrieve the global TU reported in the present study\
+based on water samples collected in this study, both at the start and end of the experiment
+```{r TUALL}
+
+TuStart = c(-0.4,-0.5,-0.1, 1.1)
+TuEnd = c(-0.3,-0.7, 0.3, 0.9)
+TuGlobal = c(-0.4,-0.6, 0.2, 1.0)
+Tutab = cbind(Tu2020, TuGlobal)
+Tutab2 = cbind(TuStart, TuEnd)
+```
+
+### Visualize
+```{r TUConsistency}
+par(mfrow = c(1, 2))
+plot(Tutab,
+     xlab = "TU2020",
+     ylab = "TUGlobal",
+     main = "Global TU vs. previous studies")
+plot(Tutab2,
+     xlab = "TuStart",
+     ylab = "TuEnd",
+     main = "TU measured at the end of this study \n vs. \n TU measured at the start of this study")
+```
+
+### Test the difference among global and TU reported in this study and reported in PETITJEAN et al. 2020 a,b
+```{r TUStats}
+chi = chisq.test(Tutab + 1) # add 1 to each values to ensure TU is positive (necessary for chi-test)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+# Here the test confirmed that Toxic units are not significantly different among studies
+# but since Chi-squared approximation may be incorrect, run fisher exact test to confirm this result :
+fisher.test((Tutab + 1)*10, simulate.p.value = TRUE) # add 1 to each values to ensure TU is positive and multiply by 10 to have integer only (necessary for fisher-test)
+
+```
+Fisher test is non-significant, confirming the result of the Chisquare-test: The toxic units are not significantly different among studies
+
+### Test the difference in Toxic Unit between the start and the end of the experiment
+```{r TUstats2}
+chi = chisq.test(Tutab2 + 1) # add 1 to each values to ensure TU is positive (necessary for chi-test)
+contrib <- 100 * chi$residuals ^ 2 / chi$statistic
+chi
+# Here the test confirmed that Toxic units are not significantly different between the start and the end of the experiment
+# but since Chi-squared approximation may be incorrect, run fisher exact test to confirm this result :
+fisher.test((Tutab2 + 1)*10, simulate.p.value = TRUE) # add 1 to each values to ensure TU is positive and multiply by 10 to have integer only (necessary for fisher-test)
+```
+Fisher test is non-significant, confirming the result of the Chisquare-test: the toxic units are not significantly different between the start and the end of the experiment
+
+# Data analyses
+
+ A quick reminder:\
+
+ - Treatments (fixed effects):\
+    - TransplantContam (transplant treatment either High contamination-HC or Low contamination-LC)\
+    - OriginContam (Origin of the population either High contamination-HC or Low contamination-LC)\
+    - Injection (control saline: PBS, antigen mixture: AMIX)\
+
+ - Covariates :\
+    - SizeEnd (Fish size at the end of the experiment)\
+    - Sex (Fish sex determined by visual inspection at the end of the experiment)\
+
+ - Blocks (random effects):\
+    - CagingSite (The name of the study site where fish are caged, either ARIMAS, AUSCOR, CELFIG or RIOU)\
+    - CageSiteID (The ID number ranging from 1 to 6 corresponding to the number of the cage within each study site)\
+    - OriginSite (The name of the site where each population were sampled = population ID)\
+
+Here we used The identity of the cage nested within the study site as random effects\
+to consider possible shared conditions within the cage and the study site.\
+
+Best models were selected by backward selection procedure, eliminating non-significant interactions and variables (i.e., p-value > 0.05). 
+
+When interactions were found significant, we analyzed differences between groups using pairwise t-test with false discovery rate adjustment (Benjamini and Hochberg, 1995) or two-sample fisher's exact test for count data (i.e., survival) (Agresti, 2007), respectively.
+
+In addition, when interactions between the level of contamination in the transplant site and the origin of the population (i.e., HC or LC) were significant, we tested whether slopes were parallel among replicates populations by comparing models including the level of contamination in transplant site (i.e., HC or LC) and the identity of the origin of the population (i.e., ARIMAS, AUSCOR or CELFIG, RIOU) with models including the interaction between the level of contamination in transplant site and the identity of the origin of the population according to (Jacquin et al., 2016).
+
+NB: The results retrieved from the following refined models are reported in Table 3 of the manuscript. The table 3 can also be found in the section "Summary of the best models (Table 3 from the manuscript)"
+
+## Survival
+```{r initSurvival}
+dat2 = dat1[is.na(dat1$Death) == F, ]
+par(mfrow = c(1,2))
+plot(dat2$Death)
+hist(dat2$Death)
+```
+The data are binomial, so use glmer function from lme4 package to construct the full model:
+### Use GLMER with family binomial
+```{r GLMERSurvival, message=FALSE, warning=FALSE}
+modfull <-
+  lme4::glmer(
+    Death ~ (TransplantContam + OriginContam + Injection) ^ 3 + (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    family = binomial(link = "logit"),
+    na.action = na.fail
+  )
+performance::check_model(modfull)
+car::Anova(modfull, type = "3")
+summary(modfull)
+MuMIn::r.squaredGLMM(modfull)
+```
+The model returns a singular fit, the random structure seems too complex for the data since "OriginSite" have a variance of zero. To solve this, we can use two alternative methods:
+
+### Use classic glm with family binomial (remove random effects)
+```{r GlmSurvivalFull}
+modfull <-
+  glm(
+    Death ~ (TransplantContam + OriginContam + Injection) ^ 3,
+    data = dat2,
+    family = "binomial"
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refine the model
+```{r GlmSurvivalRefined1}
+mod2 <-
+  glm(
+    Death ~ (TransplantContam + OriginContam + Injection) ^ 2,
+    data = dat2,
+    family = "binomial"
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refine the model
+```{r GlmSurvivalRefined2}
+mod3 <-
+  glm(
+    Death ~ (TransplantContam + OriginContam) ^ 2 + Injection,
+    data = dat2,
+    family = "binomial"
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+```
+#### Refine the model
+```{r GlmSurvivalRefined3}
+mod4 <-
+  glm(Death ~ (TransplantContam + OriginContam) ^ 2,
+      data = dat2,
+      family = "binomial")
+performance::check_model(mod4)
+car::Anova(mod4, type = "3")
+summary(mod4)
+modSurvival <- mod4
+```
+Here the interaction between fish origin and the transplant site is significant. 
+Alternatively, we can compute a survival rate per cage and build model with survival transformed to logit
+
+### Build model with survival transformed to logit
+NB: here we used the CagingSite as random effect only since survival is computed for each cage so that there is no need to add the cageSiteID.
+
+#### Create a new dataset containing survival rate within each cage
+```{r SurvivalGLMERLOGIT}
+dat2$CageIDInj <- paste(dat2$CageID, dat2$Injection, sep = "_")
+n = as.data.frame(dplyr::count(dat2, CageIDInj))
+names(n)[1] <- "CageIDInj"
+names(n)[2] <- "n"
+alive <-
+  as.data.frame(dplyr::count(dat2[dat2$Death == "0", ], CageIDInj))
+dead <-
+  as.data.frame(dplyr::count(dat2[dat2$Death == "1", ], CageIDInj))
+DeathSum <- dplyr::left_join(alive, dead, by = "CageIDInj")
+DeathSum$n.y[is.na(DeathSum$n.y)] <- 0
+DeathSum <- dplyr::left_join(DeathSum, n, by = "CageIDInj")
+names(DeathSum)[2] <- "alive"
+names(DeathSum)[3] <- "dead"
+DeathSum$survival <- DeathSum$alive / DeathSum$n
+DeathSum <-  dplyr::left_join(DeathSum,
+                              dat2[match(DeathSum$CageIDInj,  dat2$CageIDInj), c(
+                                "CageIDInj",
+                                "CageID",
+                                "OriginSite",
+                                "OriginContam",
+                                "SitesPair",
+                                "CageSiteID",
+                                "CagingSite",
+                                "TransplantContam",
+                                "Injection",
+                                "CxOxI",
+                                "CxO2xI",
+                                "CxO",
+                                "O2xI"
+                              )], by = "CageIDInj")
+
+```
+
+#### Build the full model
+```{r SurvivalLogitFull}
+modfull <-
+ lme4::lmer(
+    car::logit(survival) ~ (TransplantContam + OriginContam + Injection) ^ 3 +
+   (1 | CagingSite) + (1 | OriginSite),
+    data = DeathSum,
+    na.action = na.exclude
+  )
+
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refine the model
+```{r SurvivalLogitRefined1}
+mod2 <-
+ lme4::lmer(
+    car::logit(survival) ~ (TransplantContam + OriginContam + Injection) ^ 2+
+   (1 | CagingSite) + (1 | OriginSite),
+    data = DeathSum,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type="3")
+summary(mod2)
+```
+#### Refine the model
+```{r SurvivalLogitRefined2}
+mod3 <-
+ lme4::lmer(
+    car::logit(survival) ~ (TransplantContam + OriginContam) ^ 2 + Injection +
+   (1 | CagingSite) + (1 | OriginSite),
+    data = DeathSum,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+```
+#### Refine the model
+```{r SurvivalLogitRefined3}
+mod4 <-
+ lme4::lmer(
+    car::logit(survival) ~ (TransplantContam + OriginContam) ^ 2 +
+   (1 | CagingSite) + (1 | OriginSite),
+    data = DeathSum,
+    na.action = na.exclude
+  )
+performance::check_model(mod4)
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+
+Although, this last method also result in singular fit ("CagingSite" and "OriginSite" random effects variance is estimated as zero), here the interaction between fish origin and the transplant site is significant.
+Both simplified methods give similar results, hence the results of the more straightforward method (glm) are reported in the statistic table (table 3).
+Also, because an interaction is significant, perform a posthoc test.
+
+### Posthoc test (test for equality of proportions)
+```{r SurvivalPosthoc}
+# create two matrix containing fish survival rate according to their origin and transplant sites
+DeathSum$CxO2 = paste(DeathSum$TransplantContam, DeathSum$OriginContam, sep =
+                        "_")
+a = aggregate(DeathSum$alive, list(DeathSum$CxO2), sum)
+b = aggregate(DeathSum$dead, list(DeathSum$CxO2), sum)
+
+# create the matrix for Low contamination origin
+OriginLC = matrix(
+  c(b[b$Group.1 == "LC_LC", 2], a[a$Group.1 == "LC_LC", 2], b[b$Group.1 == "HC_LC", 2], a[a$Group.1 == "HC_LC", 2]),
+  nrow = 2,
+  ncol = 2,
+  dimnames = list(c("Dead", "Alive"), c("LC", "HC"))
+)
+OriginLC
+# create the matrix for High contamination origin
+OriginHC = matrix(
+  c(b[b$Group.1 == "LC_HC", 2], a[a$Group.1 == "LC_HC", 2], b[b$Group.1 == "HC_HC", 2], a[a$Group.1 == "HC_HC", 2]),
+  nrow = 2,
+  ncol = 2,
+  dimnames = list(c("Dead", "Alive"), c("LC", "HC"))
+)
+OriginHC
+
+# run test for equality of proportions on each matrix
+fisher.test(OriginLC, conf.level = 0.95)
+fisher.test(OriginHC, conf.level = 0.95)
+```
+Here fish from Low Contamination, display a significant decrease in survival when exposed to High Contamination site.
+On the contrary, fish from High contamination site do not display a significant change in survival according to transplant site.
+
+Also,because interaction between the contamination in origin and transplant site of fish is significant
+We test for parallel response between replicate populations.
+
+### Test for parallel responses between replicate populations (from the same origin)
+#### For Populations from High contamination sites (AUSCOR and RIOU)
+```{r survivalParallelHC}
+dat3 <- dat2[which(dat2$OriginSite %in% c("AUSCOR", "RIOU")),]
+## build the null model
+mod.null <-
+  glm(Death ~ TransplantContam + OriginSite,
+      data = dat3)
+## build the model with the site of origin in interaction with the level of contamination in transplant sites
+mod.par <-
+  glm(Death ~ TransplantContam * OriginSite,
+      data = dat3)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of HC populations are parallel.
+
+#### For Populations from Low contamination sites (ARIMAS and CELFIG)
+```{r survivalParallelLC}
+dat4 <- dat2[which(dat2$OriginSite %in% c("ARIMAS", "CELFIG")),]
+## build the null model
+mod.null <-
+  glm(Death ~ TransplantContam + OriginSite,
+      data = dat4)
+## build the model with the site of origin in interaction with the level of contamination in transplant sites
+mod.par <-
+  glm(Death ~ TransplantContam * OriginSite,
+      data = dat4)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of LC populations are parallel.
+
+### Visualize 
+The plot reported below correspond to the figure 2A from the manuscript
+```{r survivalViz, fig.dim = c(8, 6)}
+par(mfrow=c(1,1))
+Survivplot()
+```
+
+## Metal bioaccumulation
+### Create a global index of metal accumulation: Zn, Cd, Cu
+```{r BioaccIndex}
+dat2 = dat1[is.na(dat1$MuscleCd) == F, ]
+dat2$Cdscaled = scale(log(dat2$MuscleCd), center = T, scale = T)
+dat2$Cuscaled = scale(log(dat2$MuscleCu), center = T, scale = T)
+dat2$Znscaled = scale(log(dat2$MuscleZn), center = T, scale = T)
+dat2$Bioacc = dat2$Cdscaled + dat2$Cuscaled + dat2$Znscaled
+hist(dat2$Bioacc)
+```
+
+### Visualize
+```{r BioaccViz}
+par(mfrow=c(2,3))
+boxplot(Bioacc ~ OriginContam, data = dat2)
+boxplot(Bioacc ~ TransplantContam, data = dat2)
+boxplot(Bioacc ~ Injection, data = dat2)
+boxplot(Bioacc ~ TransplantContam * Injection, data = dat2)
+boxplot(Bioacc ~ TransplantContam * OriginContam, data = dat2)
+boxplot(Bioacc ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r BioaccFull}
+modfull <-
+ lme4::lmer(
+    Bioacc ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r BioaccRefined1}
+mod2 <-
+ lme4::lmer(
+    Bioacc ~ (TransplantContam + OriginContam + Injection) ^ 2  +  SizeEnd+ 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r BioaccRefined2}
+mod3 <-
+ lme4::lmer(
+    Bioacc ~ (TransplantContam + OriginContam) ^ 2 + (TransplantContam + Injection) ^ 2 + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+```
+### Refining the model
+```{r BioaccRefined3}
+mod4 <-
+ lme4::lmer(
+    Bioacc ~ (TransplantContam + OriginContam) ^ 2 + (TransplantContam + Injection) ^ 2 + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+modBioacc <- mod4
+RmodBioacc <- MuMIn::r.squaredGLMM(modBioacc)
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r BioaccSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+ modSex <-
+ lme4::lmer(
+    Bioacc ~ (TransplantContam + OriginContam) ^ 2 + (TransplantContam + Injection) ^ 2 + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+Adding the sex as covariate does no change the significance of the interactions, also sex effect is non-significant.
+The mod4 is thus the best model.
+
+### Posthoc test (pairwise t-test)
+The interactions between fish origin and the transplant as well as between transplant and injection treatments are significant. Hence, perform posthoc test (pairwise t-test) according to significant interactions
+
+```{r BioaccPosthoc1}
+pairwise.t.test(dat2$Bioacc, dat2$CxI, p.adjust.method = "fdr")
+```
+Here, fish from low contamination site and injected with a saline control solution, has bioaccumulated significantly less metals than the fish exposed to other treatment, even compared to LC exposed in Low contamination site and injected to the antigen mixture, suggesting that the antigen mixture could affect bioaccumulation in fish muscle.
+
+```{r BioaccPosthoc2}
+pairwise.t.test(dat2$Bioacc, dat2$CxO2, p.adjust.method = "fdr")
+```
+Here fish from Low Contamination, display a significant increase in the amount of metal bioaccumulated in their muscle when exposed to High Contamination site compared to when they are exposed in low contamination site. On the contrary, the metal levels is constant in HC fish, whatever the site of transplantation. 
+
+Also,because interaction between the contamination in origin and transplant site of fish is significant
+We test for parallel response between replicate populations.
+
+### Test for parallel responses between replicate populations (from the same origin)
+#### For Populations from High contamination sites (AUSCOR and RIOU)
+```{r BioaccParallelHC}
+dat3 <- dat2[which(dat2$OriginSite %in% c("AUSCOR", "RIOU")),]
+## build the null model
+mod.null <-
+  glm(Bioacc ~ TransplantContam + OriginSite,
+      data = dat3)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(Bioacc ~ TransplantContam * OriginSite,
+      data = dat3)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of HC populations are parallel.
+
+#### For Populations from Low contamination sites (ARIMAS and CELFIG)
+```{r BioaccParallelLC}
+# We test for parallel response between replicate LC populations (ARIMAS and CELFIG)
+dat4 <- dat2[which(dat2$OriginSite %in% c("ARIMAS", "CELFIG")),]
+## build the null model
+mod.null <-
+  glm(Bioacc ~ TransplantContam + OriginSite,
+      data = dat4)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(Bioacc ~ TransplantContam * OriginSite,
+      data = dat4)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of LC populations are parallel.
+
+### Visualize 
+The plot reported below correspond to the figure 3 and the figure 2B from the manuscript 
+```{r BioaccFinalViz, fig.dim = c(8, 6)}
+BioaccPlot3()
+BioaccPlot1()
+```
+
+
+## Oxidative Stress Index
+### Create a global index of oxidative stress (Costantini and Dell’Omo, 2006)
+
+```{r ratOXIIndex}
+dat2 = dat1[is.na(dat1$mMHCLO) == F, ]
+dat2 = dat2[is.na(dat2$mMH2O2) == F, ]
+dat2$ratOXI = dat2$mMH2O2 * 1000 / dat2$mMHCLO
+hist(log(dat2$ratOXI + 1))
+```
+
+### Visualize
+```{r ratOXIViz}
+par(mfrow=c(2,3))
+boxplot(log(dat2$ratOXI + 1) ~ OriginContam, data = dat2)
+boxplot(log(dat2$ratOXI + 1) ~ TransplantContam, data = dat2)
+boxplot(log(dat2$ratOXI + 1) ~ Injection, data = dat2)
+boxplot(log(dat2$ratOXI + 1) ~ TransplantContam * Injection, data = dat2, cex.axis = 0.8)
+boxplot(log(dat2$ratOXI + 1) ~ TransplantContam * OriginContam, data = dat2)
+boxplot(log(dat2$ratOXI + 1) ~ TransplantContam * OriginContam * Injection, data = dat2, cex.axis = 0.8, las = 2)
+```
+
+### Build the full model
+```{r ratOXIFull}
+modfull <-
+ lme4::lmer(
+    log(ratOXI + 1) ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+
+```
+### Refining the model
+```{r ratOXIRefined1}
+mod2 <-
+ lme4::lmer(
+    log(ratOXI + 1) ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r ratOXIRefined2}
+mod3 <-
+ lme4::lmer(
+    log(ratOXI + 1) ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r ratOXIRefined3}
+mod4 <-
+ lme4::lmer(
+    log(ratOXI + 1) ~ TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+### Refining the model
+```{r ratOXIRefined4}
+mod5 <-
+ lme4::lmer(
+    log(ratOXI + 1) ~ SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+modRatOx <- mod5
+RmodRatOx <- MuMIn::r.squaredGLMM(modRatOx)
+```
+
+The treatments has no effect on oxidative stress index but the oxidative stress index is lower in bigger fish 
+Represent the relation between fish size and oxidative stress index
+```{r ratOXISize}
+plot(log(ratOXI + 1) ~ SizeEnd, data = dat2)
+abline(b = -0.10109, a = 3.53866, col = "red")
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r ratOXISex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+mod5 <-
+ lme4::lmer(
+    log(ratOXI + 1) ~ SizeEnd + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+
+```
+The sex effect is non-significant.
+The mod5 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+## Oxidative damage
+### Check the data
+```{r OxDamIndex}
+dat2 = dat1[is.na(dat1$mMH2O2) == F, ]
+hist(log(dat2$mMH2O2 + 1))
+
+```
+
+### Visualize
+```{r OxDamViz}
+par(mfrow=c(2,3))
+boxplot(log(dat2$mMH2O2 + 1) ~ OriginContam, data = dat2)
+boxplot(log(dat2$mMH2O2 + 1) ~ TransplantContam, data = dat2)
+boxplot(log(dat2$mMH2O2 + 1) ~ Injection, data = dat2)
+boxplot(log(dat2$mMH2O2 + 1) ~ TransplantContam * Injection, data = dat2)
+boxplot(log(dat2$mMH2O2 + 1) ~ TransplantContam * OriginContam, data = dat2)
+boxplot(log(dat2$mMH2O2 + 1) ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r OxDamFull}
+modfull <-
+ lme4::lmer(
+    log(mMH2O2 + 1) ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r OxDamRefined1}
+mod2 <-
+ lme4::lmer(
+    log(mMH2O2 + 1) ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r OxDamRefined2}
+mod3 <-
+ lme4::lmer(
+    log(mMH2O2 + 1) ~ (TransplantContam + Injection) ^ 2 + OriginContam +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r OxDamRefined3}
+mod4 <-
+ lme4::lmer(
+    log(mMH2O2 + 1) ~ TransplantContam + Injection + OriginContam +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+### Refining the model
+```{r OxDamRefined4}
+mod5 <-
+ lme4::lmer(
+    log(mMH2O2 + 1) ~ SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+modOXDam <- mod5
+RmodOXDam <- MuMIn::r.squaredGLMM(modOXDam)
+```
+The treatments has no effect on oxidative damage but the oxidative damage are lower in bigger fish 
+Represent the relation between fish size and oxidative damage
+```{r OxDamSize}
+plot(log(mMH2O2 + 1) ~ SizeEnd, data = dat2)
+abline(b = -0.08377, a = 2.06737, col = "red")
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r OxDamSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    log(mMH2O2 + 1) ~ SizeEnd + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod5 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+## Antiox. Capacity
+### Check the data
+```{r antiOxIndex}
+dat2 = dat1[is.na(dat1$mMHCLO) == F, ]
+# transform variable to approx. normality
+dat2$mMHCLO.p <-
+  bimixt::boxcox(dat2$mMHCLO, car::powerTransform(dat2$mMHCLO)$lambda)
+plot(dat2$mMHCLO.p, dat2$mMHCLO)
+hist(dat2$mMHCLO.p)
+
+```
+
+### Visualize
+```{r antiOxViz}
+par(mfrow=c(2,3))
+boxplot(mMHCLO.p ~ OriginContam, data = dat2)
+boxplot(mMHCLO.p ~ TransplantContam, data = dat2)
+boxplot(mMHCLO.p ~ Injection, data = dat2)
+boxplot(mMHCLO.p ~ TransplantContam * Injection, data = dat2)
+boxplot(mMHCLO.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(mMHCLO.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r antiOxFull}
+modfull <-
+ lme4::lmer(
+    mMHCLO.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r antiOxRefined1}
+mod2 <-
+ lme4::lmer(
+    mMHCLO.p~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r antiOxRefined2}
+mod3 <-
+ lme4::lmer(
+    mMHCLO.p ~ (TransplantContam + OriginContam ) ^ 2 + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r antiOxRefined3}
+mod4 <-
+ lme4::lmer(
+    mMHCLO.p ~ TransplantContam + Injection + OriginContam +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+### Refining the model
+```{r antiOxRefined4}
+mod5 <-
+ lme4::lmer(
+    mMHCLO.p ~ OriginContam +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+modantiOx <- mod5
+RmodantiOx <- MuMIn::r.squaredGLMM(modantiOx)
+```
+
+The origin of the fish affects the non-enzymatic antioxidant capacity (measured in plasma), 
+With HC fish having higher non-enzymatic antioxidant capacity than fish from LC sites (see boxplot and table below).
+```{r antiOxOrigin}
+boxplot(mMHCLO.p ~ OriginContam, data = dat2)
+# compute mean and Se for LC and HC groups (on raw antioxidant capacity data - not transformed)
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$mMHCLO[which(dat2$OriginContam == "LC")]),
+             mean(dat2$mMHCLO[which(dat2$OriginContam == "HC")])),
+    Se = c(
+      sd(dat2$mMHCLO[which(dat2$OriginContam == "LC")]) / sqrt(length(dat2$mMHCLO[which(dat2$OriginContam == "LC")])),
+      sd(dat2$mMHCLO[which(dat2$OriginContam == "HC")]) / sqrt(length(dat2$mMHCLO[which(dat2$OriginContam == "HC")]))
+    ),
+    row.names = c("LC", "HC")
+  )
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r antiOxSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    mMHCLO.p ~ OriginContam + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod5 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+## local inflammatory Response
+### Check the data
+```{r IRIndex}
+dat2 = dat1[is.na(dat1$IR) == F, ]
+hist(dat2$IR)
+```
+
+### Visualize
+```{r IRViz}
+par(mfrow=c(2,3))
+boxplot(IR ~ OriginContam, data = dat2)
+boxplot(IR ~ TransplantContam, data = dat2)
+boxplot(IR ~ Injection, data = dat2)
+boxplot(IR ~ TransplantContam * Injection, data = dat2)
+boxplot(IR ~ TransplantContam * OriginContam, data = dat2)
+boxplot(IR ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r IRFull}
+modfull <-
+ lme4::lmer(
+    IR ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + IRTime +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r IRRefined1}
+mod2 <-
+ lme4::lmer(
+    IR~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd + IRTime +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r IRRefined2}
+mod3 <-
+ lme4::lmer(
+    IR ~ (TransplantContam + OriginContam) ^ 2 + (TransplantContam + Injection) ^ 2 +  SizeEnd + IRTime +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r IRRefined3}
+mod4 <-
+ lme4::lmer(
+    IR ~ TransplantContam + Injection + OriginContam +  SizeEnd + IRTime +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+### Refining the model
+```{r IRRefined4}
+mod5 <-
+ lme4::lmer(
+    IR ~ OriginContam + Injection + IRTime +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+
+```
+### Refining the model
+```{r IRRefined5}
+mod6 <-
+ lme4::lmer(
+    IR ~  Injection + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod6)
+car::Anova(mod6, type = "3")
+summary(mod6)
+modIR <- mod6
+RmodIR <- MuMIn::r.squaredGLMM(modIR)
+```
+The immune challenge led to a significant skin swelling, and hence triggered the local immune response.
+
+```{r IRInjection}
+boxplot(IR ~ Injection, data = dat2)
+# compute mean and Se for LC and HC groups (on raw antioxidant capacity data - not transformed)
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$IR[which(dat2$Injection == "PBS")]),
+             mean(dat2$IR[which(dat2$Injection == "AMIX")])),
+    Se = c(
+      sd(dat2$IR[which(dat2$Injection == "PBS")]) / sqrt(length(dat2$IR[which(dat2$Injection == "PBS")])),
+      sd(dat2$IR[which(dat2$Injection == "AMIX")]) / sqrt(length(dat2$IR[which(dat2$Injection == "AMIX")]))
+    ),
+    row.names = c("PBS", "AMIX")
+  )
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r IRSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    IR ~ Injection + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod6 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+
+## NL inflammatory Response
+### compute NL ratio
+```{r NLRatio.pIndex}
+# compute NL ratio
+dat2 = dat1[is.na(dat1$Lymphocytes) == F, ]
+dat2 = dat2[is.na(dat2$Neutrophils) == F, ]
+dat2$NLRatio = dat2$Neutrophils / dat2$Lymphocytes
+# transform variable to approx. normality
+dat2$NLRatio.p <-
+  bimixt::boxcox(dat2$NLRatio + 1, car::powerTransform(dat2$NLRatio + 1)$lambda)
+```
+
+### Visualize
+```{r NLRatio.pViz}
+par(mfrow=c(2,3))
+boxplot(NLRatio.p ~ OriginContam, data = dat2)
+boxplot(NLRatio.p ~ TransplantContam, data = dat2)
+boxplot(NLRatio.p ~ Injection, data = dat2)
+boxplot(NLRatio.p ~ TransplantContam * Injection, data = dat2)
+boxplot(NLRatio.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(NLRatio.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r NLRatio.pFull}
+modfull <-
+ lme4::lmer(
+    NLRatio.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r NLRatio.pRefined1}
+mod2 <-
+ lme4::lmer(
+    NLRatio.p ~ (TransplantContam + OriginContam + Injection) ^ 2  +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r NLRatio.pRefined2}
+mod3 <-
+ lme4::lmer(
+    NLRatio.p ~ (TransplantContam + OriginContam) ^ 2 + (TransplantContam + Injection) ^ 2 + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+```
+### Refining the model
+```{r NLRatio.pRefined3}
+mod4 <-
+ lme4::lmer(
+    NLRatio.p ~ (TransplantContam + OriginContam) ^ 2 + Injection + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+```
+### Refining the model
+```{r NLRatio.pRefined4}
+mod5 <-
+ lme4::lmer(
+    NLRatio.p ~ (TransplantContam + OriginContam) ^ 2  + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod5, type = "3")
+summary(mod5)
+modNLRatio.p <- mod5
+RmodNLRatio.p  <- MuMIn::r.squaredGLMM(modNLRatio.p )
+```
+Here, the interactions between fish origin and the transplant site are significant. Also, the bigger the fish, the higher the NL ratio and hence the immune inflammatory response.
+```{r NLRatio.pSize}
+# check the relationships between th NlRatio and fish size
+plot(NLRatio.p ~  SizeEnd, data = dat2)
+abline(a = 0.007545 , b =  0.003648 , col = "red")
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r NLRatio.pSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+ modSex <-
+ lme4::lmer(
+    NLRatio.p ~ (TransplantContam + OriginContam) ^ 2  + SizeEnd + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+Adding the sex as covariate does no change the significance of the interactions, also sex effect is non-significant.
+The mod5 is thus the best model.
+
+### Posthoc test (pairwise t-test)
+The interactions between fish origin and the transplant site are significant. Hence, perform posthoc test (pairwise t-test) according to significant interactions.
+
+```{r NLRatio.pPosthoc}
+pairwise.t.test(dat2$NLRatio.p, dat2$CxO2, p.adjust.method = "fdr")
+```
+Here fish from LC sites, have a marginally lower NL ratio than fish from HC site when transplanted in HC site. However, the posthoc are mostly non-significant.
+
+Also,because interaction between the contamination in origin and transplant site of fish is significant
+We test for parallel response between replicate populations.
+
+### Test for parallel responses between replicate populations (from the same origin)
+#### For Populations from High contamination sites (AUSCOR and RIOU)
+```{r NLRatio.pParallelHC}
+dat3 <- dat2[which(dat2$OriginSite %in% c("AUSCOR", "RIOU")),]
+## build the null model
+mod.null <-
+  glm(NLRatio.p ~ TransplantContam + OriginSite,
+      data = dat3)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(NLRatio.p ~ TransplantContam * OriginSite,
+      data = dat3)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of HC populations are parallel.
+
+#### For Populations from Low contamination sites (ARIMAS and CELFIG)
+```{r NLRatio.pParallelLC}
+# We test for parallel response between replicate LC populations (ARIMAS and CELFIG)
+dat4 <- dat2[which(dat2$OriginSite %in% c("ARIMAS", "CELFIG")),]
+## build the null model
+mod.null <-
+  glm(NLRatio.p ~ TransplantContam + OriginSite,
+      data = dat4)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(NLRatio.p ~ TransplantContam * OriginSite,
+      data = dat4)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of LC populations are parallel.
+
+### Visualize 
+The plot reported below correspond to the figure 2C from the manuscript
+```{r NLRatio.pFinalViz, fig.dim = c(8, 6)}
+NLratioPlot1()
+```
+
+## Available energy - Index (sum of lipids, proteins and carbohydrates)
+### Check the data
+```{r AvailableEnerJIndex}
+dat2 = dat1[is.na(dat1$AvailableEnerJ) == F, ]
+hist(log(dat2$AvailableEnerJ + 1))
+```
+
+### Visualize
+```{r AvailableEnerJViz}
+par(mfrow=c(2,3))
+boxplot(log(dat2$AvailableEnerJ + 1) ~ OriginContam, data = dat2)
+boxplot(log(dat2$AvailableEnerJ + 1) ~ TransplantContam, data = dat2)
+boxplot(log(dat2$AvailableEnerJ + 1) ~ Injection, data = dat2)
+boxplot(log(dat2$AvailableEnerJ + 1) ~ TransplantContam * Injection, data = dat2)
+boxplot(log(dat2$AvailableEnerJ + 1) ~ TransplantContam * OriginContam, data = dat2)
+boxplot(log(dat2$AvailableEnerJ + 1) ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r AvailableEnerJFull}
+modfull <-
+ lme4::lmer(
+    log(dat2$AvailableEnerJ + 1) ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r AvailableEnerJRefined1}
+mod2 <-
+ lme4::lmer(
+    log(dat2$AvailableEnerJ + 1) ~ (TransplantContam + OriginContam + Injection) ^ 2  +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r AvailableEnerJRefined2}
+mod3 <-
+ lme4::lmer(
+    log(dat2$AvailableEnerJ + 1) ~ (TransplantContam + OriginContam) ^ 2 + Injection + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+```
+### Refining the model
+```{r AvailableEnerJRefined3}
+mod4 <-
+ lme4::lmer(
+    log(dat2$AvailableEnerJ + 1) ~ (TransplantContam + OriginContam) ^ 2 + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+modAvailableEnerJ <- mod4
+RmodAvailableEnerJ  <- MuMIn::r.squaredGLMM(modAvailableEnerJ)
+```
+Here, the interactions between fish origin and the transplant site are significant. 
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r AvailableEnerJSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+ modSex <-
+ lme4::lmer(
+    log(dat2$AvailableEnerJ + 1) ~ (TransplantContam + OriginContam) ^ 2  + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+Adding the sex as covariate does no change the significance of the interactions, also sex effect is non-significant.
+The mod5 is thus the best model.
+
+### Posthoc test (pairwise t-test)
+The interactions between fish origin and the transplant site are significant. Hence, perform posthoc test (pairwise t-test) according to significant interactions.
+
+```{r AvailableEnerJPosthoc}
+pairwise.t.test(log(dat2$AvailableEnerJ + 1), dat2$CxO2, p.adjust.method = "fdr")
+```
+Here the available energy increases in LC fish when transplanted in HC sites. Similarly, the available energy increases in HC fish when transplanted in LC sites, suggesting that local condition within each study site could have driven the plastic responses rather than the level of contamination. 
+
+Also,because interaction between the contamination in origin and transplant site of fish is significant
+We test for parallel response between replicate populations.
+
+### Test for parallel responses between replicate populations (from the same origin)
+#### For Populations from High contamination sites (AUSCOR and RIOU)
+```{r AvailableEnerJParallelHC}
+dat3 <- dat2[which(dat2$OriginSite %in% c("AUSCOR", "RIOU")),]
+## build the null model
+mod.null <-
+  glm(log(dat3$AvailableEnerJ + 1) ~ TransplantContam + OriginSite,
+      data = dat3)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(log(dat3$AvailableEnerJ + 1) ~ TransplantContam * OriginSite,
+      data = dat3)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are not significantly different, we hence cannot reject the null hypothesis: the slopes of HC populations are parallel.
+
+#### For Populations from Low contamination sites (ARIMAS and CELFIG)
+```{r AvailableEnerJParallelLC}
+# We test for parallel response between replicate LC populations (ARIMAS and CELFIG)
+dat4 <- dat2[which(dat2$OriginSite %in% c("ARIMAS", "CELFIG")),]
+## build the null model
+mod.null <-
+  glm(log(dat4$AvailableEnerJ + 1) ~ TransplantContam + OriginSite,
+      data = dat4)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(log(dat4$AvailableEnerJ + 1) ~ TransplantContam * OriginSite,
+      data = dat4)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are significantly different, we hence reject the null hypothesis. here, the slopes of LC populations are not parallel.
+
+### Visualize 
+```{r AvailableEnerJFinalViz, fig.dim = c(8, 6)}
+AvailEnerPlot1()
+```
+
+## Available energy - Lipids
+### Check the data
+```{r LipidsIndex}
+dat2 = dat1[is.na(dat1$AvailableEnerJ) == F, ]
+# transform variable to approx. normality
+dat2$MuscleLipid.p <-
+  bimixt::boxcox(dat2$MuscleLipid, car::powerTransform(dat2$MuscleLipid)$lambda)
+```
+
+### Visualize
+```{r LipidsViz}
+par(mfrow=c(2,3))
+boxplot(MuscleLipid.p  ~ OriginContam, data = dat2)
+boxplot(MuscleLipid.p  ~ TransplantContam, data = dat2)
+boxplot(MuscleLipid.p  ~ Injection, data = dat2)
+boxplot(MuscleLipid.p  ~ TransplantContam * Injection, data = dat2)
+boxplot(MuscleLipid.p  ~ TransplantContam * OriginContam, data = dat2)
+boxplot(MuscleLipid.p  ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r LipidsFull}
+modfull <-
+ lme4::lmer(
+    MuscleLipid.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r LipidsRefined1}
+mod2 <-
+ lme4::lmer(
+     MuscleLipid.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r LipidsRefined2}
+mod3 <-
+ lme4::lmer(
+    MuscleLipid.p ~ (TransplantContam + OriginContam) ^ 2 + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r LipidsRefined3}
+mod4 <-
+ lme4::lmer(
+    MuscleLipid.p ~ (TransplantContam + OriginContam) ^ 2 +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+modLipids <- mod4
+RmodLipids  <- MuMIn::r.squaredGLMM(modLipids)
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r LipidsSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    MuscleLipid.p ~ (TransplantContam + OriginContam) ^ 2  + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod4 is thus the best model.
+Here, the interactions between fish origin and the transplant site are significant, confirming the pattern observed for the integrative measure of available energy previously observed.
+
+## Available energy - Proteins
+### Check the data
+```{r ProteinsIndex}
+dat2 = dat1[is.na(dat1$AvailableEnerJ) == F, ]
+hist(dat2$MuscleProtein)
+```
+
+### Visualize
+```{r ProteinsViz}
+par(mfrow=c(2,3))
+boxplot(MuscleProtein  ~ OriginContam, data = dat2)
+boxplot(MuscleProtein  ~ TransplantContam, data = dat2)
+boxplot(MuscleProtein  ~ Injection, data = dat2)
+boxplot(MuscleProtein  ~ TransplantContam * Injection, data = dat2)
+boxplot(MuscleProtein  ~ TransplantContam * OriginContam, data = dat2)
+boxplot(MuscleProtein  ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r ProteinsFull}
+modfull <-
+ lme4::lmer(
+    MuscleProtein ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r ProteinsRefined1}
+mod2 <-
+ lme4::lmer(
+     MuscleProtein ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r ProteinsRefined2}
+mod3 <-
+ lme4::lmer(
+    MuscleProtein ~ (Injection + OriginContam) ^ 2 +  TransplantContam +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r ProteinsRefined3}
+mod4 <-
+ lme4::lmer(
+    MuscleProtein ~ (Injection + OriginContam) ^ 2 +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+modProtein <- mod4
+RmodProtein  <- MuMIn::r.squaredGLMM(modProtein)
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r ProteinsSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    MuscleProtein ~ (Injection + OriginContam) ^ 2   + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod4 is thus the best model.
+Here, the interactions between fish origin and the immune challenge are significant, with LC fish site having a decreasing level of proteins in their muscle when immune challenged. On the contrary HC fish have a constant level of proteins, whatever the injection (control saline solution or antigen mixture).
+```{r ProteinsPosthoc}
+pairwise.t.test(dat2$MuscleProtein, dat2$O2xI, p.adjust.method = "fdr")
+```
+
+## Available energy - Carbohydrates
+### Check the data
+```{r CarbohIndex}
+dat2 = dat1[is.na(dat1$AvailableEnerJ) == F, ]
+hist(log(dat2$MuscleCarbohydrate))
+```
+
+### Visualize
+```{r CarbohViz}
+par(mfrow=c(2,3))
+boxplot(log(dat2$MuscleCarbohydrate)  ~ OriginContam, data = dat2)
+boxplot(log(dat2$MuscleCarbohydrate)  ~ TransplantContam, data = dat2)
+boxplot(log(dat2$MuscleCarbohydrate)  ~ Injection, data = dat2)
+boxplot(log(dat2$MuscleCarbohydrate)  ~ TransplantContam * Injection, data = dat2)
+boxplot(log(dat2$MuscleCarbohydrate)  ~ TransplantContam * OriginContam, data = dat2)
+boxplot(log(dat2$MuscleCarbohydrate)  ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r CarbohFull}
+modfull <-
+ lme4::lmer(
+    log(dat2$MuscleCarbohydrate) ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r CarbohRefined1}
+mod2 <-
+ lme4::lmer(
+     log(dat2$MuscleCarbohydrate) ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r CarbohRefined2}
+mod3 <-
+ lme4::lmer(
+    log(dat2$MuscleCarbohydrate) ~ (TransplantContam + OriginContam) ^ 2 + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r CarbohRefined3}
+mod4 <-
+ lme4::lmer(
+    log(dat2$MuscleCarbohydrate) ~ (TransplantContam + OriginContam) ^ 2 +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+modCarboh <- mod4
+RmodCarboh  <- MuMIn::r.squaredGLMM(modCarboh)
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r CarbohSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    log(dat2$MuscleCarbohydrate) ~ (TransplantContam + OriginContam) ^ 2  + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod4 is thus the best model.
+Here, the interactions between fish origin and the transplant site are significant, confirming the pattern observed for the integrative measure of available energy previously observed.
+
+
+## Daily mass changes
+### Check the data
+```{r DMCIndex}
+dat2 = dat1[is.na(dat1$DailyMassChange) == F, ]
+# transform variable to approx. normality
+dat2$DailyMassChange.p <-
+  bimixt::boxcox(dat2$DailyMassChange + 3,
+         car::powerTransform(dat2$DailyMassChange + 3)$lambda)
+hist(dat2$DailyMassChange.p)
+```
+
+### Visualize
+```{r DMCViz}
+par(mfrow=c(2,3))
+boxplot(DailyMassChange.p ~ OriginContam, data = dat2)
+boxplot(DailyMassChange.p ~ TransplantContam, data = dat2)
+boxplot(DailyMassChange.p ~ Injection, data = dat2)
+boxplot(DailyMassChange.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DailyMassChange.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DailyMassChange.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r DMCFull}
+modfull <-
+ lme4::lmer(
+    DailyMassChange.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r DMCRefined1}
+mod2 <-
+ lme4::lmer(
+    DailyMassChange.p ~ (TransplantContam + OriginContam + Injection) ^ 2  +  SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r DMCRefined2}
+mod3 <-
+ lme4::lmer(
+    DailyMassChange.p ~ (TransplantContam + OriginContam) ^ 2 + Injection + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+```
+### Refining the model
+```{r DMCRefined3}
+mod4 <-
+ lme4::lmer(
+    DailyMassChange.p ~ (TransplantContam + OriginContam) ^ 2  + SizeEnd + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+### Refining the model
+```{r DMCRefined4}
+mod5 <-
+ lme4::lmer(
+    DailyMassChange.p ~ (TransplantContam + OriginContam) ^ 2 + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod5, type = "3")
+summary(mod5)
+modDMC <- mod5
+RmodDMC  <- MuMIn::r.squaredGLMM(modDMC)
+```
+Here, the interactions between fish origin and the transplant site are significant. 
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r DMCSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+ modSex <-
+ lme4::lmer(
+    DailyMassChange.p ~ (TransplantContam + OriginContam) ^ 2  + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+Adding the sex as covariate does no change the significance of the interactions, also sex effect is non-significant.
+The mod5 is thus the best model.
+
+### Posthoc test (pairwise t-test)
+The interactions between fish origin and the transplant site are significant. Hence, perform posthoc test (pairwise t-test) according to significant interactions.
+
+```{r DMCPosthoc}
+pairwise.t.test(dat2$DailyMassChange.p, dat2$CxO2, p.adjust.method = "fdr")
+```
+Here the posthoc are non significant, except between the HC and LC fish when exposed to LC sites, likely because responses were very different depending on the population considered (see non-parallel plastic responses below). 
+Also,because interaction between the contamination in origin and transplant site of fish is significant
+We test for parallel response between replicate populations.
+
+### Test for parallel responses between replicate populations (from the same origin)
+#### For Populations from High contamination sites (AUSCOR and RIOU)
+```{r DMCParallelHC}
+dat3 <- dat2[which(dat2$OriginSite %in% c("AUSCOR", "RIOU")),]
+## build the null model
+mod.null <-
+  glm(DailyMassChange.p ~ TransplantContam + OriginSite,
+      data = dat3)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(DailyMassChange.p ~ TransplantContam * OriginSite,
+      data = dat3)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are significantly different, we hence reject the null hypothesis, here the slopes of HC populations are not parallel.
+
+#### For Populations from Low contamination sites (ARIMAS and CELFIG)
+```{r DMCParallelLC}
+# We test for parallel response between replicate LC populations (ARIMAS and CELFIG)
+dat4 <- dat2[which(dat2$OriginSite %in% c("ARIMAS", "CELFIG")),]
+## build the null model
+mod.null <-
+  glm(DailyMassChange.p ~ TransplantContam + OriginSite,
+      data = dat4)
+## build the model with the site of origin in interaction with the level of contam in transplant sites
+mod.par <-
+  glm(DailyMassChange.p ~ TransplantContam * OriginSite,
+      data = dat4)
+
+anova(mod.null, mod.par, test = "LRT")
+coef(mod.par)
+summary(mod.par)
+```
+The null model and the model including the site of origin in interaction with the level of contaminant in transplant sites are significantly different, we hence reject the null hypothesis, here the slopes of LC populations are not parallel.
+
+### Visualize 
+```{r DMCFinalViz, fig.dim = c(8, 6)}
+DMCPlot1()
+```
+
+## HSI
+### Check the data
+```{r HSIIndex}
+dat2 = dat1[is.na(dat1$HSI) == F, ]
+# transform variable to approx. normality
+dat2$HSI.p <- bimixt::boxcox(dat2$HSI, car::powerTransform(dat2$HSI)$lambda)
+hist(dat2$HSI.p)
+```
+
+### Visualize
+```{r HSIViz}
+par(mfrow=c(2,3))
+boxplot(HSI.p ~ OriginContam, data = dat2)
+boxplot(HSI.p ~ TransplantContam, data = dat2)
+boxplot(HSI.p ~ Injection, data = dat2)
+boxplot(HSI.p ~ TransplantContam * Injection, data = dat2)
+boxplot(HSI.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(HSI.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r HSIFull}
+modfull <-
+ lme4::lmer(
+    HSI.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r HSIRefined1}
+mod2 <-
+ lme4::lmer(
+    HSI.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r HSIRefined2}
+mod3 <-
+ lme4::lmer(
+    HSI.p ~ (TransplantContam + OriginContam) ^ 2 + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r HSIRefined3}
+mod4 <-
+ lme4::lmer(
+    HSI.p ~ TransplantContam + Injection + OriginContam +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+### Refining the model
+```{r HSIRefined4}
+mod5 <-
+ lme4::lmer(
+    HSI.p ~ SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+modHSI <- mod5
+RmodHSI  <- MuMIn::r.squaredGLMM(modHSI)
+```
+The treatments has no effect on HSI but the HSI is higher in bigger fish 
+Represent the relation between fish size and HSI
+```{r HSISize}
+plot(HSI.p ~ SizeEnd, data = dat2)
+abline(b = -0.04355, a = 0.10156, col = "red")
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+### Test for the sex effect
+```{r HSISex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    HSI.p ~ SizeEnd + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is non-significant.
+The mod5 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+## GSI
+### Check the data
+```{r GSIIndex}
+dat2 = dat1[is.na(dat1$GSI) == F, ]
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+# transform variable to approx. normality
+dat2$GSI.p <- bimixt::boxcox(dat2$GSI, car::powerTransform(dat2$GSI)$lambda)
+hist(dat2$GSI.p)
+```
+
+### Visualize
+```{r GSIViz}
+par(mfrow=c(2,3))
+boxplot(GSI.p ~ OriginContam, data = dat2)
+boxplot(GSI.p ~ TransplantContam, data = dat2)
+boxplot(GSI.p ~ Injection, data = dat2)
+boxplot(GSI.p ~ TransplantContam * Injection, data = dat2)
+boxplot(GSI.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(GSI.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+### Build the full model
+```{r GSIFull}
+modfull <-
+ lme4::lmer(
+    GSI.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+### Refining the model
+```{r GSIRefined1}
+mod2 <-
+ lme4::lmer(
+    GSI.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+### Refining the model
+```{r GSIRefined2}
+mod3 <-
+ lme4::lmer(
+    GSI.p ~ TransplantContam + OriginContam + Injection +  SizeEnd + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+### Refining the model
+```{r GSIRefined3}
+mod4 <-
+ lme4::lmer(
+    GSI.p ~ Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod4)
+car::Anova(mod4, type = "3")
+summary(mod4)
+modGSI <- mod4
+RmodGSI <- MuMIn::r.squaredGLMM(modGSI)
+```
+
+The treatments has no effect on GSI but the GSI is higher in females.
+Represent the relation between fish sex and GSI
+```{r GSISize}
+boxplot(GSI.p ~ Sex, data = dat2)
+```
+
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+## Summary of the best models for traits excepted gene expression (Table 3 from the manuscript)
+
+The following table report the results of the best models tested above, this table correspond to the Table 3  in the manuscript. Excepted for the survival (GLM), the table report the marginal and conditional Rsquared (R2m and R2c respectively).
+```{r summaryStats, echo=FALSE}
+# create a temporary table grouping the names of the best models and the name of the corresponding response variable
+BestMods <- data.frame(
+  mods = c(
+    "modSurvival",
+    "modBioacc",
+    "modRatOx",
+    "modOXDam",
+    "modantiOx",
+    "modIR",
+    "modNLRatio.p",
+    "modAvailableEnerJ",
+    "modDMC",
+    "modHSI",
+    "modGSI"
+  ),
+  modsId = c(
+    "Survival",
+    "Bioaccumulation", 
+    "Oxidative stress index", 
+    "Oxidative damage", 
+    "Antioxidant capacity", 
+    "Local immune response",
+    "NL inflammatory immune response", 
+    "Available energy", 
+    "Daily mass change",
+    "HSI",
+    "GSI"
+  ))
+
+# add the sample size
+BestMods[["modsn"]] <- rep(NA, nrow(BestMods))
+for(r in seq(nrow(BestMods))){
+  if("lm" %in% class(get(BestMods[r, "mods"]))) {
+    BestMods[r, "modsn"] <- paste0("n = ", nrow(model.frame(get(BestMods[r, "mods"]))))
+  } else{
+    BestMods[r, "modsn"] <-
+      paste0("n = ", summary(get(BestMods[r, "mods"]))$devcomp$dims[["n"]])
+  }
+}
+# add the Rsquared
+BestMods[["modsR2m"]] <- rep(NA, nrow(BestMods))
+BestMods[["modsR2c"]] <- rep(NA, nrow(BestMods))
+for(r in seq(nrow(BestMods))){
+  if("lm" %in% class(get(BestMods[r, "mods"]))) {
+    BestMods[r, "modsR2m"] <- NA
+    BestMods[r, "modsR2c"] <- NA
+  } else{
+    BestMods[r, "modsR2m"] <-
+      paste0("R2m = ", signif(get(paste0("R", BestMods[r, "mods"]))[[1]], digits = 3))
+    BestMods[r, "modsR2c"] <-
+      paste0("R2c = ", signif(get(paste0("R", BestMods[r, "mods"]))[[2]], digits = 3))
+  }
+}
+
+# retrieve the useful informations from the models
+options(scipen=999)
+ValuesRes <- data.frame()
+for (r in seq(nrow(BestMods))) {
+  if ("lm" %in% class(get(BestMods[r, "mods"]))) {
+      Values <- cbind(
+      signif(summary(get(BestMods[r, "mods"]))$coefficient[,c(1:3)], digits = 4),
+      df = c(NA, signif(car::Anova(get(BestMods[r, "mods"]), type = "3")[["Df"]], digits = 4)),
+      Chisq = c(NA, signif(car::Anova(get(BestMods[r, "mods"]), type = "3")[["LR Chisq"]], digits = 4)),
+      p.value = c(NA, signif(car::Anova(get(BestMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]], digits = 4))
+    )
+      colnames(Values)[which(colnames(Values) == "z value")] <- "t or z value"
+  } else{
+    Values <- cbind(
+      summary(get(BestMods[r, "mods"]))$coefficient,
+      df = car::Anova(get(BestMods[r, "mods"]), type = "3")[["Df"]],
+      Chisq = car::Anova(get(BestMods[r, "mods"]), type = "3")[["Chisq"]],
+      p.value = car::Anova(get(BestMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]]
+    )
+     colnames(Values)[which(colnames(Values) == "t value")] <- "t or z value"
+    Values <- signif(Values, digits = 4)
+  }
+  Values <- cbind(rownames(Values), Values)
+  rownames(Values) <- NULL
+  Values <- cbind(rep(BestMods[r, "modsId"], nrow(Values)), Values)
+  ValuesRes <- rbind(ValuesRes, Values)
+}
+# leave the two first column without names
+names(ValuesRes)[c(1,2)] <- c("", "")
+
+
+# specify the new predictor names
+PredictorsNames <-
+  data.frame(
+    toreplace = unique(ValuesRes[[2]]),
+    replacement = c(
+      "Intercept",
+      "Transplant",
+      "Origin",
+      "Transplant : Origin",
+      "Imm. challenge",
+      "Transplant : imm. Challenge",
+      "Size",
+      "Sex"
+    )
+  )
+
+# rename the predictors
+for(pn in PredictorsNames[["toreplace"]]) {
+  ValuesRes[[2]][which(ValuesRes[[2]] == pn)] <-
+    PredictorsNames[["replacement"]][which(PredictorsNames[["toreplace"]] == pn)]
+}
+
+# replace p.value with large decimal by approximations 
+ValuesRes[["p.value"]][which(ValuesRes[["p.value"]] < 0.0001)] <- "<0.0001"
+ValuesRes[["p.value"]][which(ValuesRes[["p.value"]] > 0.0001 & ValuesRes[["p.value"]] < 0.01)] <- "<0.01"
+ValuesRes[["p.value"]][which(ValuesRes[["p.value"]] > 0.01 & ValuesRes[["p.value"]] < 0.05)] <- "<0.05"
+options(scipen=0)
+
+l <- vector("list", nrow(BestMods))
+l[[1]] <- kableExtra::kable_classic(
+  kableExtra::kbl(ValuesRes[-1], align = "c"),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+
+for(i in seq(nrow(BestMods))) {
+  l[[i+1]] <- kableExtra::pack_rows(
+    l[[i]],
+    if(is.na(BestMods[i, "modsR2m"]) & is.na(BestMods[i, "modsR2c"])){
+    paste(BestMods[i, "modsId"], BestMods[i, "modsn"], sep = " | ")
+    }else{
+    paste(BestMods[i, "modsId"], BestMods[i, "modsn"], BestMods[i, "modsR2m"], BestMods[i, "modsR2c"], sep = " | ")
+      },
+    min(which(ValuesRes[[1]] ==  BestMods[i, "modsId"])),
+    max(which(ValuesRes[[1]] ==  BestMods[i, "modsId"])),
+    label_row_css = "background-color: #666; color: #fff;"
+  )
+}
+l[[length(l)]]
+
+```
+
+## Genes expression
+
+The summary of the results of the best models selected below is reported in Table 4 from the manuscript and is also available in the section "Summary of the best models for gene expression (Table 4 from the manuscript)"
+
+### Mtl
+#### Check the data
+```{r MtlIndex}
+dat2 = dat1[is.na(dat1$DeltaCtMtl) == F, ]
+# transform variable to approx. normality
+dat2$DeltaCtMtl.p <-
+  bimixt::boxcox(dat2$DeltaCtMtl, car::powerTransform(dat2$DeltaCtMtl)$lambda)
+hist(dat2$DeltaCtMtl.p)
+```
+
+#### Visualize
+```{r MtlViz}
+par(mfrow=c(2,3))
+boxplot(DeltaCtMtl.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtMtl.p ~ TransplantContam, data = dat2)
+boxplot(DeltaCtMtl.p ~ Injection, data = dat2)
+boxplot(DeltaCtMtl.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DeltaCtMtl.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DeltaCtMtl.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r MtlFull}
+modfull <-
+ lme4::lmer(
+    DeltaCtMtl.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r MtlRefined1}
+mod2 <-
+ lme4::lmer(
+    DeltaCtMtl.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r MtlRefined2}
+mod3 <-
+ lme4::lmer(
+    DeltaCtMtl.p ~ TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r MtlRefined3}
+mod4 <-
+ lme4::lmer(
+    DeltaCtMtl.p ~  OriginContam +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+Mtl expression is significantly different according to fish origin. More specifically, HC fish have higher Mtl expression than LC fish.
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r MtlSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    DeltaCtMtl.p ~ OriginContam + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(modSex)
+car::Anova(modSex, type = "3")
+summary(modSex)
+modMtl <- modSex
+RmodMtl <- MuMIn::r.squaredGLMM(modMtl)
+```
+The sex effect is significant.
+The modSex is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+```{r MtlOrigin}
+boxplot(DeltaCtMtl.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtMtl.p ~ Sex, data = dat2)
+# compute mean and Se for LC and HC groups
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "LC")]),
+             mean(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "HC")])),
+    Se = c(
+      sd(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "LC")]) / sqrt(length(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "LC")])),
+      sd(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "HC")]) / sqrt(length(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "HC")]))
+    ),
+    row.names = c("LC", "HC"),
+    n = c(length(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "LC")]),
+    length(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "HC")]))
+  )
+
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+### Cat
+#### Check the data
+```{r CatIndex}
+dat2 = dat1[is.na(dat1$DeltaCtCat) == F, ]
+# transform variable to approx. normality
+dat2$DeltaCtCat.p <-
+  bimixt::boxcox(dat2$DeltaCtCat, car::powerTransform(dat2$DeltaCtCat)$lambda)
+hist(dat2$DeltaCtCat.p)
+```
+
+#### Visualize
+```{r CatViz}
+par(mfrow=c(2,3))
+boxplot(DeltaCtCat.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtCat.p ~ TransplantContam, data = dat2)
+boxplot(DeltaCtCat.p ~ Injection, data = dat2)
+boxplot(DeltaCtCat.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DeltaCtCat.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DeltaCtCat.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r CatFull}
+modfull <-
+ lme4::lmer(
+    DeltaCtCat.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r CatRefined1}
+mod2 <-
+ lme4::lmer(
+    DeltaCtCat.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r CatRefined2}
+mod3 <-
+ lme4::lmer(
+    DeltaCtCat.p ~ TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r CatRefined3}
+mod4 <-
+ lme4::lmer(
+    DeltaCtCat.p ~  Injection + SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+Cat expression is significantly different according to immune challenge. More specifically, HC fish have higher Cat expression than LC fish. Also, bigger fish have higher expression of Cat.
+
+```{r CatSize}
+plot(DeltaCtCat.p ~ SizeEnd, data = dat2)
+abline(a = -3.16488, b = 0.04676 , col = "red")
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r CatSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    DeltaCtCat.p ~ Injection + SizeEnd + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(modSex)
+car::Anova(modSex, type = "3")
+summary(modSex)
+modCat<- modSex
+RmodCat <- MuMIn::r.squaredGLMM(modCat)
+```
+The sex effect is significant.
+The modSex is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+```{r CatInjection}
+boxplot(DeltaCtCat.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtCat.p ~ Sex, data = dat2)
+# compute mean and Se for LC and HC groups
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$DeltaCtCat.p[which(dat2$Injection == "PBS")]),
+             mean(dat2$DeltaCtCat.p[which(dat2$Injection == "AMIX")])),
+    Se = c(
+      sd(dat2$DeltaCtCat.p[which(dat2$Injection == "PBS")]) / sqrt(length(dat2$DeltaCtCat.p[which(dat2$Injection == "PBS")])),
+      sd(dat2$DeltaCtCat.p[which(dat2$Injection == "AMIX")]) / sqrt(length(dat2$DeltaCtCat.p[which(dat2$Injection == "AMIX")]))
+    ),
+    row.names = c("PBS", "AMIX"),
+    n = c(length(dat2$DeltaCtCat.p[which(dat2$Injection == "PBS")]),
+    length(dat2$DeltaCtCat.p[which(dat2$Injection == "AMIX")]))
+  )
+
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+### GPX
+#### Check the data
+```{r GpxIndex}
+dat2 = dat1[is.na(dat1$DeltaCtGpx) == F, ]
+# transform variable to approx. normality
+dat2$DeltaCtGpx.p <-
+  bimixt::boxcox(dat2$DeltaCtGpx, car::powerTransform(dat2$DeltaCtMtl)$lambda)
+hist(dat2$DeltaCtGpx.p)
+```
+
+#### Visualize
+```{r GpxViz}
+par(mfrow=c(2,3))
+boxplot(DeltaCtGpx.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtGpx.p ~ TransplantContam, data = dat2)
+boxplot(DeltaCtGpx.p ~ Injection, data = dat2)
+boxplot(DeltaCtGpx.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DeltaCtGpx.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DeltaCtGpx.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r GpxFull}
+modfull <-
+ lme4::lmer(
+    DeltaCtGpx.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r GpxRefined1}
+mod2 <-
+ lme4::lmer(
+    DeltaCtGpx.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r GpxRefined2}
+mod3 <-
+ lme4::lmer(
+    DeltaCtGpx.p ~ TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r GpxRefined3}
+mod4 <-
+ lme4::lmer(
+    DeltaCtGpx.p ~  OriginContam +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+Gpx expression is significantly different according to fish origin. More specifically, HC fish have higher Gpx expression than LC fish.
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r GpxSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    DeltaCtGpx.p ~ OriginContam + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(modSex)
+car::Anova(modSex, type = "3")
+summary(modSex)
+modGpx <- modSex
+RmodGpx <- MuMIn::r.squaredGLMM(modGpx)
+```
+The sex effect is significant.
+The modSex is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+```{r GpxOrigin}
+boxplot(DeltaCtGpx.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtGpx.p ~ Sex, data = dat2)
+# compute mean and Se for LC and HC groups
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "LC")]),
+             mean(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "HC")])),
+    Se = c(
+      sd(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "LC")]) / sqrt(length(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "LC")])),
+      sd(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "HC")]) / sqrt(length(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "HC")]))
+    ),
+    row.names = c("LC", "HC"),
+    n = c(length(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "LC")]),
+    length(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "HC")]))
+  )
+
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+### Casp3
+#### Check the data
+```{r Casp3Index}
+dat2 = dat1[is.na(dat1$DeltaCtCasp3) == F, ]
+# transform variable to approx. normality
+dat2$DeltaCtCasp3.p <-
+  bimixt::boxcox(dat2$DeltaCtCasp3, car::powerTransform(dat2$DeltaCtMtl)$lambda)
+hist(dat2$DeltaCtCasp3.p)
+```
+
+#### Visualize
+```{r Casp3Viz}
+par(mfrow=c(2,3))
+boxplot(DeltaCtCasp3.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtCasp3.p ~ TransplantContam, data = dat2)
+boxplot(DeltaCtCasp3.p ~ Injection, data = dat2)
+boxplot(DeltaCtCasp3.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DeltaCtCasp3.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DeltaCtCasp3.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r Casp3Full}
+modfull <-
+ lme4::lmer(
+    DeltaCtCasp3.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r Casp3Refined1}
+mod2 <-
+ lme4::lmer(
+    DeltaCtCasp3.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r Casp3Refined2}
+mod3 <-
+ lme4::lmer(
+    DeltaCtCasp3.p ~ TransplantContam + (OriginContam + Injection)^2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r Casp3Refined3}
+mod4 <-
+ lme4::lmer(
+    DeltaCtCasp3.p ~  TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+#### Refining the model
+```{r Casp3Refined4}
+mod5 <-
+ lme4::lmer(
+    DeltaCtCasp3.p ~  OriginContam +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+modCasp3 <- mod5
+RmodCasp3 <- MuMIn::r.squaredGLMM(modCasp3)
+```
+
+Casp3 expression is significantly different according to fish origin. More specifically, HC fish have higher Casp3 expression than LC fish. Also, the bigger the fish, the higher the level of Casp3 expression. 
+
+```{r Casp3Size}
+plot(DeltaCtCasp3.p ~ SizeEnd, data = dat2)
+abline(a = -5.19004, b = 0.21743, col = "red")
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r Casp3Sex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    DeltaCtCasp3.p ~ OriginContam + SizeEnd + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is not significant.
+The mod5 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+```{r Casp3Origin}
+boxplot(DeltaCtCasp3.p ~ OriginContam, data = dat2)
+# compute mean and Se for LC and HC groups
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "LC")]),
+             mean(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "HC")])),
+    Se = c(
+      sd(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "LC")]) / sqrt(length(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "LC")])),
+      sd(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "HC")]) / sqrt(length(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "HC")]))
+    ),
+    row.names = c("LC", "HC"),
+    n = c(length(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "LC")]),
+    length(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "HC")]))
+  )
+
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+### Pcx
+#### Check the data
+```{r PcxIndex}
+dat2 = dat1[is.na(dat1$DeltaCtPcx) == F, ]
+# transform variable to approx. normality
+dat2$DeltaCtPcx.p <-
+  bimixt::boxcox(dat2$DeltaCtPcx, car::powerTransform(dat2$DeltaCtMtl)$lambda)
+hist(dat2$DeltaCtPcx.p)
+```
+
+#### Visualize
+```{r PcxViz}
+par(mfrow=c(2,3))
+boxplot(DeltaCtPcx.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtPcx.p ~ TransplantContam, data = dat2)
+boxplot(DeltaCtPcx.p ~ Injection, data = dat2)
+boxplot(DeltaCtPcx.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DeltaCtPcx.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DeltaCtPcx.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r PcxFull}
+modfull <-
+ lme4::lmer(
+    DeltaCtPcx.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r PcxRefined1}
+mod2 <-
+ lme4::lmer(
+    DeltaCtPcx.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r PcxRefined2}
+mod3 <-
+ lme4::lmer(
+    DeltaCtPcx.p ~ TransplantContam + (OriginContam + Injection)^2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r PcxRefined3}
+mod4 <-
+ lme4::lmer(
+    DeltaCtPcx.p ~  TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+#### Refining the model
+```{r PcxRefined4}
+mod5 <-
+ lme4::lmer(
+    DeltaCtPcx.p ~  Injection +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+
+car::Anova(mod5, type = "3")
+summary(mod5)
+
+```
+
+Pcx expression is significantly different according to the immune challenge. More specifically, immune challenged fish injected with the antigen mixture (AMIX) have a lower Pcx gene expression compare to the fish injected with the control saline solution (PBS). 
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r PcxSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    DeltaCtPcx.p ~ Injection + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(modSex)
+car::Anova(modSex, type = "3")
+summary(modSex)
+modPcx <- modSex
+RmodPcx <- MuMIn::r.squaredGLMM(modPcx)
+```
+The sex effect is significant.
+The modSex is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+```{r PcxOrigin}
+boxplot(DeltaCtPcx.p ~ Injection, data = dat2)
+# compute mean and Se for LC and HC groups
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$DeltaCtPcx.p[which(dat2$Injection == "PBS")]),
+             mean(dat2$DeltaCtPcx.p[which(dat2$Injection == "AMIX")])),
+    Se = c(
+      sd(dat2$DeltaCtPcx.p[which(dat2$Injection == "PBS")]) / sqrt(length(dat2$DeltaCtPcx.p[which(dat2$Injection == "PBS")])),
+      sd(dat2$DeltaCtPcx.p[which(dat2$Injection == "AMIX")]) / sqrt(length(dat2$DeltaCtPcx.p[which(dat2$Injection == "AMIX")]))
+    ),
+    row.names = c("PBS", "AMIX"),
+    n = c(length(dat2$DeltaCtPcx.p[which(dat2$Injection == "PBS")]),
+    length(dat2$DeltaCtPcx.p[which(dat2$Injection == "AMIX")]))
+  )
+
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+### Pygl
+#### Check the data
+```{r PyglIndex}
+dat2 = dat1[is.na(dat1$DeltaCtPygl) == F, ]
+# transform variable to approx. normality
+dat2$DeltaCtPygl.p <-
+  bimixt::boxcox(dat2$DeltaCtPygl, car::powerTransform(dat2$DeltaCtMtl)$lambda)
+hist(dat2$DeltaCtPygl.p)
+```
+
+#### Visualize
+```{r PyglViz}
+par(mfrow=c(2,3))
+boxplot(DeltaCtPygl.p ~ OriginContam, data = dat2)
+boxplot(DeltaCtPygl.p ~ TransplantContam, data = dat2)
+boxplot(DeltaCtPygl.p ~ Injection, data = dat2)
+boxplot(DeltaCtPygl.p ~ TransplantContam * Injection, data = dat2)
+boxplot(DeltaCtPygl.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(DeltaCtPygl.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r PyglFull}
+modfull <-
+ lme4::lmer(
+    DeltaCtPygl.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r PyglRefined1}
+mod2 <-
+ lme4::lmer(
+    DeltaCtPygl.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r PyglRefined2}
+mod3 <-
+ lme4::lmer(
+    DeltaCtPygl.p ~ (TransplantContam + OriginContam)^2 + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r PyglRefined3}
+mod4 <-
+ lme4::lmer(
+    DeltaCtPygl.p ~  TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+#### Refining the model
+```{r PyglRefined4}
+mod5 <-
+ lme4::lmer(
+    DeltaCtPygl.p ~  Injection +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(mod5)
+car::Anova(mod5, type = "3")
+summary(mod5)
+modPygl <- mod5
+RmodPygl <- MuMIn::r.squaredGLMM(modPygl)
+```
+
+Pygl expression is significantly different according to the immune challenge. More specifically, immune challenged fish injected with the antigen mixture (AMIX) have a lower Pygl gene expression compare to the fish injected with the control saline solution (PBS). 
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r PyglSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    DeltaCtPygl.p ~ Injection + Sex + 
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+
+car::Anova(modSex, type = "3")
+summary(modSex)
+
+```
+The sex effect is not significant.
+The mod5 is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+```{r PyglOrigin}
+boxplot(DeltaCtPygl.p ~ Injection, data = dat2)
+# compute mean and Se for LC and HC groups
+meanVal <-
+  data.frame(
+    mean = c(mean(dat2$DeltaCtPygl.p[which(dat2$Injection == "PBS")]),
+             mean(dat2$DeltaCtPygl.p[which(dat2$Injection == "AMIX")])),
+    Se = c(
+      sd(dat2$DeltaCtPygl.p[which(dat2$Injection == "PBS")]) / sqrt(length(dat2$DeltaCtPygl.p[which(dat2$Injection == "PBS")])),
+      sd(dat2$DeltaCtPygl.p[which(dat2$Injection == "AMIX")]) / sqrt(length(dat2$DeltaCtPygl.p[which(dat2$Injection == "AMIX")]))
+    ),
+    row.names = c("PBS", "AMIX"),
+    n = c(length(dat2$DeltaCtPygl.p[which(dat2$Injection == "PBS")]),
+    length(dat2$DeltaCtPygl.p[which(dat2$Injection == "AMIX")]))
+  )
+
+kableExtra::kable_classic(
+  kableExtra::kbl(meanVal),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+```
+
+### CqActb (β-actin)
+#### Check the data
+```{r ActbIndex}
+dat2 = dat1[is.na(dat1$CqActb) == F, ]
+# transform variable to approx. normality
+dat2$CqActb.p <-
+  bimixt::boxcox(dat2$CqActb, car::powerTransform(dat2$DeltaCtMtl)$lambda)
+hist(dat2$CqActb.p)
+```
+
+#### Visualize
+```{r ActbViz}
+par(mfrow=c(2,3))
+boxplot(CqActb.p ~ OriginContam, data = dat2)
+boxplot(CqActb.p ~ TransplantContam, data = dat2)
+boxplot(CqActb.p ~ Injection, data = dat2)
+boxplot(CqActb.p ~ TransplantContam * Injection, data = dat2)
+boxplot(CqActb.p ~ TransplantContam * OriginContam, data = dat2)
+boxplot(CqActb.p ~ TransplantContam * OriginContam * Injection, data = dat2)
+```
+
+#### Build the full model
+```{r ActbFull}
+modfull <-
+ lme4::lmer(
+    CqActb.p ~ (TransplantContam + OriginContam + Injection) ^ 3 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(modfull, type = "3")
+summary(modfull)
+```
+#### Refining the model
+```{r ActbRefined1}
+mod2 <-
+ lme4::lmer(
+    CqActb.p ~ (TransplantContam + OriginContam + Injection) ^ 2 +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod2, type = "3")
+summary(mod2)
+```
+#### Refining the model
+```{r ActbRefined2}
+mod3 <-
+ lme4::lmer(
+    CqActb.p ~ TransplantContam + OriginContam + Injection +  SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod3, type = "3")
+summary(mod3)
+
+```
+#### Refining the model
+```{r ActbRefined3}
+mod4 <-
+ lme4::lmer(
+    CqActb.p ~  TransplantContam + SizeEnd +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+car::Anova(mod4, type = "3")
+summary(mod4)
+
+```
+
+Now that we have identified the best model, add sex as covariate to check whether results are sensitive
+NB: sample size is reduced when adding sex variable within the model, for this reason the sex effect on results is checked on the final model
+
+#### Test for the sex effect
+```{r ActbSex}
+dat2 = dat2[is.na(dat2$Sex) == F, ]
+modSex <-
+ lme4::lmer(
+    CqActb.p ~  TransplantContam + SizeEnd + Sex +
+      (1 | CagingSite /  CageSiteID) + (1| OriginSite),
+    data = dat2,
+    na.action = na.exclude
+  )
+performance::check_model(modSex)
+car::Anova(modSex, type = "3")
+summary(modSex)
+modActb <- modSex
+RmodActb <- MuMIn::r.squaredGLMM(modActb)
+```
+The sex effect is  significant.
+The modSex is thus the best model.
+Here, there is no interaction, and hence no posthoc test nor parallelism test to conduct
+
+
+## Summary of the best models for gene expression (Table 4 from the manuscript)
+
+The following table report the results of the best models tested above, this table correspond to the Table 4 in the manuscript. The table report the marginal and conditional Rsquared (R2m and R2c respectively).
+```{r summaryStatsGeneExpression,  echo=FALSE}
+# create a temporary table grouping the names of the best models and the name of the corresponding response variable
+BestGenesMods <- data.frame(
+  mods = c(
+    "modMtl",
+    "modCat",
+    "modGpx",
+    "modCasp3",
+    "modPcx",
+    "modPygl"
+  ),
+  modsId = c(
+    "Mtl - Metallothionein",
+    "Cat - Catalase", 
+    "Gpx - Glutathione peroxidase", 
+    "Casp3 - Caspase 3", 
+    "Pcx - Pyruvate carboxylase", 
+    "Pygl - Glycogen phosphorylase"
+  ),
+  modFunc = c(
+    "Metal sequestration", 
+    "Antioxidant - Cat",
+    "Antioxidant - Gpx ",
+    "Apoptosis effector",
+    "Energy metabolism (oxaloacetate synthesis & gluconeogenesis)",
+    "Energy metabolism (glycogen breakdown to produce glucose)")
+  )
+
+# add the sample size
+BestGenesMods[["modsn"]] <- rep(NA, nrow(BestGenesMods))
+for(r in seq(nrow(BestGenesMods))){
+  if("lm" %in% class(get(BestGenesMods[r, "mods"]))) {
+    BestGenesMods[r, "modsn"] <- paste0("n = ", nrow(model.frame(get(BestGenesMods[r, "mods"]))))
+  } else{
+    BestGenesMods[r, "modsn"] <-
+      paste0("n = ", summary(get(BestGenesMods[r, "mods"]))$devcomp$dims[["n"]])
+  }
+}
+# add the Rsquared
+BestGenesMods[["modsR2m"]] <- rep(NA, nrow(BestGenesMods))
+BestGenesMods[["modsR2c"]] <- rep(NA, nrow(BestGenesMods))
+for(r in seq(nrow(BestGenesMods))){
+  if("lm" %in% class(get(BestGenesMods[r, "mods"]))) {
+    BestGenesMods[r, "modsR2m"] <- NA
+    BestGenesMods[r, "modsR2c"] <- NA
+  } else{
+    BestGenesMods[r, "modsR2m"] <-
+      paste0("R2m = ", signif(get(paste0("R", BestGenesMods[r, "mods"]))[[1]], digits = 3))
+    BestGenesMods[r, "modsR2c"] <-
+      paste0("R2c = ", signif(get(paste0("R", BestGenesMods[r, "mods"]))[[2]], digits = 3))
+  }
+}
+
+# retrieve the useful informations from the models
+options(scipen=999)
+ValuesRes <- data.frame()
+for (r in seq(nrow(BestGenesMods))) {
+  if ("lm" %in% class(get(BestGenesMods[r, "mods"]))) {
+      Values <- cbind(
+      signif(summary(get(BestGenesMods[r, "mods"]))$coefficient[,c(1:3)], digits = 4),
+      df = c(NA, signif(car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Df"]], digits = 4)),
+      Chisq = c(NA, signif(car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["LR Chisq"]], digits = 4)),
+      p.value = c(NA, signif(car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]], digits = 4))
+    )
+      colnames(Values)[which(colnames(Values) == "z value")] <- "t or z value"
+  } else{
+    Values <- cbind(
+      summary(get(BestGenesMods[r, "mods"]))$coefficient,
+      df = car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Df"]],
+      Chisq = car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Chisq"]],
+      p.value = car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]]
+    )
+     colnames(Values)[which(colnames(Values) == "t value")] <- "t or z value"
+    Values <- signif(Values, digits = 4)
+  }
+  Values <- cbind(rownames(Values), Values)
+  rownames(Values) <- NULL
+  Values <- cbind(rep(BestGenesMods[r, "modsId"], nrow(Values)), Values)
+  Values <- cbind(rep(BestGenesMods[r, "modFunc"], nrow(Values)), Values)
+  ValuesRes <- rbind(ValuesRes, Values)
+}
+# leave the two first column without names
+names(ValuesRes)[c(1,2,3)] <- c("", "", "")
+
+# specify the new predictor names
+PredictorsNames <-
+  data.frame(toreplace = unique(ValuesRes[[3]]), 
+             replacement = c("Intercept", "Origin", "Sex", "Imm. challenge", "Size"))
+
+# rename the predictors
+for(pn in PredictorsNames[["toreplace"]]) {
+  ValuesRes[[3]][which(ValuesRes[[3]] == pn)] <-
+    PredictorsNames[["replacement"]][which(PredictorsNames[["toreplace"]] == pn)]
+}
+
+# replace p.value with large decimal by approximations 
+ValuesRes[["p.value"]][which(ValuesRes[["p.value"]] < 0.0001)] <- "<0.0001"
+ValuesRes[["p.value"]][which(ValuesRes[["p.value"]] > 0.0001 & ValuesRes[["p.value"]] < 0.01)] <- "<0.01"
+ValuesRes[["p.value"]][which(ValuesRes[["p.value"]] > 0.01 & ValuesRes[["p.value"]] < 0.05)] <- "<0.05"
+options(scipen=0)
+
+# create an empty list to interate over the newly created table
+l <- vector("list", nrow(BestGenesMods))
+
+# remove the column carrying response variable names
+ValuesResnoResp <- ValuesRes[-2]
+colnames(ValuesResnoResp)[2] <- ""
+l[[1]] <- kableExtra::kable_classic(
+  kableExtra::collapse_rows(kableExtra::kbl(ValuesResnoResp, align = "c"), columns = 1, valign = "middle"),
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = F,
+  html_font = "arial",
+  font_size = 10
+)
+
+for(i in seq(nrow(BestGenesMods))) {
+  l[[i+1]] <- kableExtra::pack_rows(
+    l[[i]],
+    if(is.na(BestGenesMods[i, "modsR2m"]) & is.na(BestGenesMods[i, "modsR2c"])){
+    paste(BestGenesMods[i, "modsId"], BestGenesMods[i, "modsn"], sep = " | ")
+    }else{
+    paste(BestGenesMods[i, "modsId"], BestGenesMods[i, "modsn"], BestGenesMods[i, "modsR2m"], BestGenesMods[i, "modsR2c"], sep = " | ")
+      },
+    min(which(ValuesRes[[2]] ==  BestGenesMods[i, "modsId"])),
+    max(which(ValuesRes[[2]] ==  BestGenesMods[i, "modsId"])),
+    label_row_css = "background-color: #666; color: #fff;"
+  )
+}
+l[[length(l)]]
+
+```
+
+# R session informations
+
+```{r sessionInfos}
+sessionInfo()
+```
+
+# References
+
+Costantini, D., Dell’Omo, G., 2006. Effects of T-cell-mediated immune response on avian oxidative stress. Comp. Biochem. Physiol. A. Mol. Integr. Physiol. 145, 137–142. https://doi.org/10.1016/j.cbpa.2006.06.002.
+
+Jacquin, L., Reader, S.M., Boniface, A., Mateluna, J., Patalas, I., Pérez-Jvostov, F., Hendry, A.P., 2016. Parallel and nonparallel behavioural evolution in response to parasitism and predation in Trinidadian guppies. J. Evol. Biol. 29, 1406–1422. https://doi.org/10.1111/jeb.12880.
+
+Petitjean, Q., Jacquin, L., Riem, L., Pitout, M., Perrault, A., Cousseau, M., Laffaille, P., Jean, S., 2020a. Intraspecific variability of responses to combined metal contamination and immune challenge among wild fish populations. Environ. Pollut. 116042. https://doi.org/10.1016/j.envpol.2020.116042.
+
+Petitjean, Q., Jean, S., Côte, J., Larcher, T., Angelier, F., Ribout, C., Perrault, A., Laffaille, P., Jacquin, L., 2020b. Direct and indirect effects of multiple environmental stressors on fish health in human-altered rivers. Sci. Total Environ. 742, 140657. https://doi.org/10.1016/j.scitotenv.2020.140657.
