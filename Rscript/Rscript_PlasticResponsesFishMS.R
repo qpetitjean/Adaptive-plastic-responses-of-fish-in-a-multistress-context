@@ -29,15 +29,14 @@
 ## ----VariousFunc, eval = FALSE-----------------------------------------------------------------------------------------
 # load some custom functions used to draw the plots included within the MS
 source("https://raw.githubusercontent.com/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context/main/Rscript/SourcePlots_PlasticResponsesFishMS.R")
- 
+
 # load some custom functions used to draw the statistic tables included within the MS
-source("https://raw.githubusercontent.com/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context/main/Rscript/SourceTables_PlasticResponsesFishMS.R")
- 
+source("https://raw.githubusercontent.com/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context/main/Rscript/SourceTables_PlasticResponsesFishMS.R") 
 
 #' 
 #' # Load the dataset
 ## ----dataset-----------------------------------------------------------------------------------------------------------
-dat1 <- read.csv2("https://raw.githubusercontent.com/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context/main/Dataset/Dataset_Petitjeanetal-Plastic_responses_of_fish_in_multistress_context.csv", dec = ".", sep = ";")
+dat1 <- read.csv2("https://raw.githubusercontent.com/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context/main/Dataset/Dataset_Petitjeanetal-Adaptive_plastic_responses_of_fish_in_multistress_context.csv", dec = ".", sep = ";")
 
 # specify that the cage Id is a factor instead of numeric to use it as random intercept in mixed effect models
 dat1[["CageSiteID"]] <- as.factor(dat1[["CageSiteID"]])
