@@ -1,9 +1,9 @@
-###############################################################################################################
-# This is a set of function used to draw the different tables of statistics displayed in:                                    #
-# title: "'Plastic responses to metal contamination in a multistress context: a field experiment in fish'"    #
-# author: "Quentin PETITJEAN"                                                                                 #
-# date: "25/06/2022"                                                                                          #
-###############################################################################################################
+#########################################################################################################################################
+# This is a set of function used to draw the differents plot displayed in                                                                    # 
+# title: "'Adaptive plastic responses to metal contamination in a multistress context: a field experiment in fish'"                     #
+# author:  "Quentin PETITJEAN[q.petitjean1@gmail.com], Pascal LAFFAILLE, Annie PERRAULT, Myriam COUSSEAU, Séverine JEAN, Lisa JACQUIN"  #                                                                                        #
+# date: "25/06/2022"                                                                                                                    #
+#########################################################################################################################################
 
 #########################################
 #           Table 3 from the MS         #
