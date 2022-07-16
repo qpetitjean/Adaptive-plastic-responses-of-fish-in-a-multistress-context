@@ -11,6 +11,6 @@ Petitjean Q., Laffaille P., Perrault A., Cousseau M., Jean S., Jacquin L. Adapti
 **The Rscript** folder contains 3 .R files:
 - The first one (SourcePlots_PlasticResponsesFishMS.R) corresponding to the custom functions sourced to draw the figures included within the manuscript. 
 - The second file (SourceTables_PlasticResponsesFishMS.R) corresponding to the custom functions sourced to draw the tables of summary statistics (Table 3 and 4) included within the manuscript. 
-- And third, the Rscript containing all the analyses performed.
+- And the third file (Rscript_PlasticResponsesFishMS.R) corresponding to the Rscript containing all the analyses performed in this study.
 
-**The Report** folder contains the Rmarkdown files (HTML and MD version) of the statistical analyses conducted for this study.
+**The Report** folder contains the Rmarkdown files (HTML and MD version) of the statistical analyses conducted for this study (this is an equivalent to Rscript_PlasticResponsesFishMS.R but with the result of each command line displayed).
