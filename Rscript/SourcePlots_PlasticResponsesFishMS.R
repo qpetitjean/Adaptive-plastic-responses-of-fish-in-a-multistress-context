@@ -1,5 +1,5 @@
 #########################################################################################################################################
-# This is a set of function used to make the differents tables displayed in                                                                    # 
+# This is a set of function used to draw the different plots displayed in                                                                    # 
 # title: "'Adaptive plastic responses to metal contamination in a multistress context: a field experiment in fish'"                     #
 # author:  "Quentin PETITJEAN[q.petitjean1@gmail.com], Pascal LAFFAILLE, Annie PERRAULT, Myriam COUSSEAU, Séverine JEAN, Lisa JACQUIN"  #                                                                                        #
 # date: "25/06/2022"                                                                                                                    #
