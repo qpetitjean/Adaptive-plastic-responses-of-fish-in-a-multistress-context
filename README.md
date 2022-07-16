@@ -1,4 +1,4 @@
-# Plastic responses of fish in a multistress context
+# Adaptive plastic responses of fish in a multistress context
 ## General
 This repository contains the data and scripts use to test the plastic responses of fish (_Gobio Occitaniae_) under metal-contaminated streams and immune challenge. These results are discussed in the following manuscript: 
 
