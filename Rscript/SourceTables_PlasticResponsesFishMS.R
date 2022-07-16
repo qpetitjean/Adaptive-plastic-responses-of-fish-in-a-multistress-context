@@ -77,15 +77,15 @@ TraitsTable <- function() {
   for (r in seq(nrow(BestMods))) {
     if ("lm" %in% class(get(BestMods[r, "mods"]))) {
       Values <- cbind(
-        signif(summary(get(BestMods[r, "mods"]))$coefficient[, c(1:3)], digits = 4),
+        signif(summary(get(BestMods[r, "mods"]))$coefficient[, c(1:3)], digits = 3),
         df = c(NA, signif(
-          car::Anova(get(BestMods[r, "mods"]), type = "3")[["Df"]], digits = 4
+          car::Anova(get(BestMods[r, "mods"]), type = "3")[["Df"]], digits = 3
         )),
         Chisq = c(NA, signif(
-          car::Anova(get(BestMods[r, "mods"]), type = "3")[["LR Chisq"]], digits = 4
+          car::Anova(get(BestMods[r, "mods"]), type = "3")[["LR Chisq"]], digits = 3
         )),
         p.value = c(NA, signif(
-          car::Anova(get(BestMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]], digits = 4
+          car::Anova(get(BestMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]], digits = 3
         ))
       )
       colnames(Values)[which(colnames(Values) == "z value")] <-
@@ -99,7 +99,7 @@ TraitsTable <- function() {
       )
       colnames(Values)[which(colnames(Values) == "t value")] <-
         "t or z value"
-      Values <- signif(Values, digits = 4)
+      Values <- signif(Values, digits = 3)
     }
     Values <- cbind(rownames(Values), Values)
     rownames(Values) <- NULL
@@ -116,13 +116,13 @@ TraitsTable <- function() {
       toreplace = unique(ValuesRes[[2]]),
       replacement = c(
         "Intercept",
-        "Transplant",
-        "Origin",
-        "Transplant : Origin",
-        "Imm. challenge",
-        "Transplant : imm. Challenge",
+        "Transplant (LC)",
+        "Origin (LC)",
+        "Transplant (LC): Origin (LC)",
+        "Imm. challenge (PBS)",
+        "Transplant (LC): imm. Challenge (PBS)",
         "Size",
-        "Sex"
+        "Sex (M)"
       )
     )
   
@@ -238,15 +238,15 @@ GenesExpTable <- function() {
       Values <- cbind(
         signif(summary(get(
           BestGenesMods[r, "mods"]
-        ))$coefficient[, c(1:3)], digits = 4),
+        ))$coefficient[, c(1:3)], digits = 3),
         df = c(NA, signif(
-          car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Df"]], digits = 4
+          car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Df"]], digits = 3
         )),
         Chisq = c(NA, signif(
-          car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["LR Chisq"]], digits = 4
+          car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["LR Chisq"]], digits = 3
         )),
         p.value = c(NA, signif(
-          car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]], digits = 4
+          car::Anova(get(BestGenesMods[r, "mods"]), type = "3")[["Pr(>Chisq)"]], digits = 3
         ))
       )
       colnames(Values)[which(colnames(Values) == "z value")] <-
@@ -260,7 +260,7 @@ GenesExpTable <- function() {
       )
       colnames(Values)[which(colnames(Values) == "t value")] <-
         "t or z value"
-      Values <- signif(Values, digits = 4)
+      Values <- signif(Values, digits = 3)
     }
     Values <- cbind(rownames(Values), Values)
     rownames(Values) <- NULL
@@ -277,7 +277,7 @@ GenesExpTable <- function() {
   PredictorsNames <-
     data.frame(
       toreplace = unique(ValuesRes[[3]]),
-      replacement = c("Intercept", "Origin", "Sex", "Imm. challenge", "Size")
+      replacement = c("Intercept", "Origin (LC)", "Sex (M)", "Imm. challenge (PBS)", "Size")
     )
   
   # rename the predictors
