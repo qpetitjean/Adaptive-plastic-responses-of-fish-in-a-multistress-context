@@ -15,5 +15,3 @@ Petitjean Q., Laffaille P., Perrault A., Cousseau M., Jean S., Jacquin L. Adapti
 
 **The Report** folder contains the Rmarkdown files (HTML and MD version) of the statistical analyses conducted for this study (this is an equivalent to Rscript_PlasticResponsesFishMS.R but with the result of each command line displayed).
 Nb: to open the HTML version of the report within your browser follow this link: _https://raw.githack.com/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context/main/Report/Rmarkdown-Adaptive_plastic_responses_of_fish_in_multistress_context.HTML_
-
-https://zenodo.org/badge/513195557.svg
