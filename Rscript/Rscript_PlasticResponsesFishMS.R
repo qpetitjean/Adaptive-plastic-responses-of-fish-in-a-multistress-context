@@ -62,7 +62,7 @@ names(tab1) <- c("Origin site",	"Transplant site",	"Contamination level in origi
 tab1 <- tab1[which(tab1[["Sample size"]]>0),]
 tab1 <- tab1[order(tab1[["Origin site"]], tab1[["Transplant site"]]),]
 rownames(tab1) <- NULL
-kableExtra::kable_classic(kableExtra::kbl(tab1), bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F,  html_font = "arial", font_size = 10)
+kableExtra::kable_classic_2(kableExtra::kbl(tab1), bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F,  html_font = "arial", font_size = 10)
 # total sample size: 
 sum(tab1[["Sample size"]])
 
@@ -74,7 +74,7 @@ names(tab2) <- c("Origin site",	"Transplant site",	"Contamination level in origi
 tab2 <- tab2[which(tab2[["Sample size"]]>0),]
 tab2 <- tab2[order(tab2[["Origin site"]], tab2[["Transplant site"]]),]
 rownames(tab2) <- NULL
-kableExtra::kable_classic(kableExtra::kbl(tab2), bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F,  html_font = "arial",  font_size = 10)
+kableExtra::kable_classic_2(kableExtra::kbl(tab2), bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F,  html_font = "arial",  font_size = 10)
 # total sample size: 
 sum(tab2[["Sample size"]])
 
@@ -1127,7 +1127,7 @@ meanVal <-
     ),
     row.names = c("LC", "HC")
   )
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -1269,7 +1269,7 @@ meanVal <-
     ),
     row.names = c("PBS", "AMIX")
   )
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -2374,7 +2374,7 @@ meanVal <-
     length(dat2$DeltaCtMtl.p[which(dat2$OriginContam == "HC")]))
   )
 
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -2501,7 +2501,7 @@ meanVal <-
     length(dat2$DeltaCtCat.p[which(dat2$Injection == "AMIX")]))
   )
 
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -2623,7 +2623,7 @@ meanVal <-
     length(dat2$DeltaCtGpx.p[which(dat2$OriginContam == "HC")]))
   )
 
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -2763,7 +2763,7 @@ meanVal <-
     length(dat2$DeltaCtCasp3.p[which(dat2$OriginContam == "HC")]))
   )
 
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -2899,7 +2899,7 @@ meanVal <-
     length(dat2$DeltaCtPcx.p[which(dat2$Injection == "AMIX")]))
   )
 
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,
@@ -3035,7 +3035,7 @@ meanVal <-
     length(dat2$DeltaCtPygl.p[which(dat2$Injection == "AMIX")]))
   )
 
-kableExtra::kable_classic(
+kableExtra::kable_classic_2(
   kableExtra::kbl(meanVal),
   bootstrap_options = c("striped", "hover", "condensed", "responsive"),
   full_width = F,

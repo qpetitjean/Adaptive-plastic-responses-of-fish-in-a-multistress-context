@@ -142,7 +142,7 @@ TraitsTable <- function() {
   options(scipen = 0)
   
   l <- vector("list", nrow(BestMods))
-  l[[1]] <- kableExtra::kable_classic(
+  l[[1]] <- kableExtra::kable_classic_2(
     kableExtra::kbl(ValuesRes[-1], align = "c"),
     bootstrap_options = c("striped", "hover", "condensed", "responsive"),
     full_width = F,
@@ -160,7 +160,7 @@ TraitsTable <- function() {
                                         },
                                         min(which(ValuesRes[[1]] ==  BestMods[i, "modsId"])),
                                         max(which(ValuesRes[[1]] ==  BestMods[i, "modsId"])),
-                                        label_row_css = "background-color: #666; color: #fff;")
+                                        label_row_css = "background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;")
   }
   l[[length(l)]]
 }
@@ -303,7 +303,7 @@ GenesExpTable <- function() {
   # remove the column carrying response variable names
   ValuesResnoResp <- ValuesRes[-2]
   colnames(ValuesResnoResp)[2] <- ""
-  l[[1]] <- kableExtra::kable_classic(
+  l[[1]] <- kableExtra::kable_classic_2(
     kableExtra::collapse_rows(
       kableExtra::kbl(ValuesResnoResp, align = "c"),
       columns = 1,
@@ -329,7 +329,7 @@ GenesExpTable <- function() {
                                         },
                                         min(which(ValuesRes[[2]] ==  BestGenesMods[i, "modsId"])),
                                         max(which(ValuesRes[[2]] ==  BestGenesMods[i, "modsId"])),
-                                        label_row_css = "background-color: #666; color: #fff;")
+                                        label_row_css = "background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;")
   }
   l[[length(l)]]
 }

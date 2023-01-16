@@ -12,7 +12,7 @@ Survivplot <- function() {
   # create a new dataset containing survival rate within each cage
   names(dat2)
   head(dat2)
-  dat2$t2 = paste(dat2$Transfert, dat2$OriginSite, sep = "_")
+  dat2$t2 = paste(dat2$OriginSite, dat2$TransplantContam,  sep = "_")
   n = as.data.frame(dplyr::count(dat2, CageID))
   names(n)[1] <- "CageID"
   names(n)[2] <- "n"
@@ -43,6 +43,8 @@ Survivplot <- function() {
   names(DeathSum)
   DeathSum$t2 = paste(DeathSum$OriginSite, DeathSum$TransplantContam, sep =
                         "_")
+  
+  # average the results according to study sites
   n = as.data.frame(dplyr::count(DeathSum, t2))
   n
   names(n)[1] <- "t2"
@@ -92,10 +94,22 @@ Survivplot <- function() {
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   
   # Create a custom jitter
-  jitt = 0.3
-  for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  jitt = 0.35
+  
+  ## for LC
+  Ga2LC <- Ga2[which(Ga2$TransplantContam == "LC"),]
+  Ga2LC[order(Ga2LC$OriginContam),]
+  for(x in  seq(nrow(Ga2LC))){
+    Ga2LC$CNumJitter[x] <- Ga2LC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
   }
+  ## for HC
+  Ga2HC <- Ga2[which(Ga2$TransplantContam == "HC"),]
+  Ga2HC[order(Ga2HC$OriginContam),]
+  for(x in  seq(nrow(Ga2HC))){
+    Ga2HC$CNumJitter[x] <- Ga2HC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
+  }
+
+  Ga2 <- merge(Ga2, rbind(Ga2LC[c("t2","CNumJitter")], Ga2HC[c("t2","CNumJitter")]), by = "t2")
   
   # Create a break interval on Y axis
   breakInt = c(0.2, 0.7)
@@ -122,7 +136,8 @@ Survivplot <- function() {
     xlab = "",
     axes = FALSE,
     xlim = c(0, 2),
-    ylim = c(min(finalScale), max(finalScale))
+    ylim = c(min(finalScale), 
+             max(finalScale)+((max(finalScale)-min(finalScale))/(length(finalScale)-1)/2))
   )
   
   title(
@@ -139,9 +154,7 @@ Survivplot <- function() {
   )
   
   # draw y axis
-  plotScale <- as.character(plotScale)
-  plotScale[which(plotScale == "1")] <- "1.0"
-  plotScale[which(plotScale == "0")] <- "0.0"
+  plotScale <- unlist(rapply(as.list(plotScale), sprintf, fmt = "%0.1f", how = "replace"))
   segments(
     x0 = 0,
     y0 = max(breakInt) - 5 / 100 * max(breakInt),
@@ -201,6 +214,66 @@ Survivplot <- function() {
          ))
   }
   
+  # some formating to add the individuals to the plot
+  dat2$Orcolor <-
+    ifelse(dat2$OriginContam == "LC", "#336633", "#990000")
+  dat2$OrSymbols <-
+    ifelse(dat2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             dat2$OriginSite == "AUSCOR",
+             22,
+             ifelse(dat2$OriginSite == "CELFIG", 23, 21)
+           ))
+  
+  # Because we have modifier the scale of the plot (start at 0.4 instead of 0) 
+  # we need to change the value corresponding to dead fish from 0 to 0.4
+  dat2$Surv[dat2$Death == 1] <- min(finalScale)
+  dat2$Surv[dat2$Death == 0] <- max(finalScale)
+  
+  # associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+    dat2[dat2$t2 == i, "SurvJitter"] <- ifelse(grepl("#990000", dat2[dat2$t2 == i, "Orcolor"]), 
+                                               ifelse(grepl("RIOU", dat2[dat2$t2 == i, "t2"]),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]+0.03),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]+0.015)
+                                               ),
+                                               ifelse(grepl("CELFIG", dat2[dat2$t2 == i, "t2"]),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]-0.03),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]-0.015)
+                                               ))
+    
+    
+  }
+  
+  dat2$CNumJitter <- jitter(dat2$CNum, 5)
+  dat2$SurvJitter <- jitter(dat2$SurvJitter, 2)
+  # Force the jittered value that are below 0 at 0 
+  dat2$SurvJitter[which(dat2$SurvJitter < min(finalScale))] <- min(finalScale)
+  
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      points(
+        CNumJitter[k],
+        SurvJitter[k],
+        pch = OrSymbols[k],
+        col = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.2),
+        cex = 1
+      )
+    )}
+  
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
     with(
@@ -224,8 +297,8 @@ Survivplot <- function() {
         survival[k] - Se[k],
         CNumJitter[k],
         survival[k] + Se[k],
-        Ga2$Orcolor[k],
-        lwd = 1
+        col = "black",
+        lwd = 1.2
       )
     )
     with(
@@ -233,14 +306,14 @@ Survivplot <- function() {
       points(
         CNumJitter[k],
         survival[k],
-        pch = Ga2$OrSymbols[k],
+        pch = OrSymbols[k],
         col = "black",
-        bg = Ga2$Orcolor[k],
-        cex = 2
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.7),
+        cex = 1.5
       )
     )
   }
-  
+
   # Add significance stars above NC fish slopes
   text(
     1.1,
@@ -296,6 +369,7 @@ Survivplot <- function() {
     cex = 1,
     family = "sans"
   )
+  
 }
 
 # Create the variability among populations plots for survival (without legend)
@@ -304,7 +378,7 @@ Survivplot2 <- function() {
   # create a new dataset containing survival rate within each cage
   names(dat2)
   head(dat2)
-  dat2$t2 = paste(dat2$Transfert, dat2$OriginSite, sep = "_")
+  dat2$t2 = paste(dat2$OriginSite, dat2$TransplantContam,  sep = "_")
   n = as.data.frame(dplyr::count(dat2, CageID))
   names(n)[1] <- "CageID"
   names(n)[2] <- "n"
@@ -384,10 +458,22 @@ Survivplot2 <- function() {
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   
   # Create a custom jitter
-  jitt = 0.3
-  for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  jitt = 0.35
+  
+  ## for LC
+  Ga2LC <- Ga2[which(Ga2$TransplantContam == "LC"),]
+  Ga2LC[order(Ga2LC$OriginContam),]
+  for(x in  seq(nrow(Ga2LC))){
+    Ga2LC$CNumJitter[x] <- Ga2LC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
   }
+  ## for HC
+  Ga2HC <- Ga2[which(Ga2$TransplantContam == "HC"),]
+  Ga2HC[order(Ga2HC$OriginContam),]
+  for(x in  seq(nrow(Ga2HC))){
+    Ga2HC$CNumJitter[x] <- Ga2HC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
+  }
+  
+  Ga2 <- merge(Ga2, rbind(Ga2LC[c("t2","CNumJitter")], Ga2HC[c("t2","CNumJitter")]), by = "t2")
   
   # Create a break interval on Y axis
   breakInt = c(0.2, 0.7)
@@ -414,7 +500,8 @@ Survivplot2 <- function() {
     xlab = "",
     axes = FALSE,
     xlim = c(0, 2),
-    ylim = c(min(finalScale), max(finalScale))
+    ylim = c(min(finalScale), 
+             max(finalScale)+((max(finalScale)-min(finalScale))/(length(finalScale)-1)/2))
   )
   
   title(
@@ -430,9 +517,7 @@ Survivplot2 <- function() {
     family = "sans"
   )
   # draw y axis
-  plotScale <- as.character(plotScale)
-  plotScale[which(plotScale == "1")] <- "1.0"
-  plotScale[which(plotScale == "0")] <- "0.0"
+  plotScale <- unlist(rapply(as.list(plotScale), sprintf, fmt = "%0.1f", how = "replace"))
   segments(
     x0 = 0,
     y0 = max(breakInt) - 5 / 100 * max(breakInt),
@@ -492,6 +577,64 @@ Survivplot2 <- function() {
          ))
   }
   
+  # some formating to add the individuals to the plot
+  dat2$Orcolor <-
+    ifelse(dat2$OriginContam == "LC", "#336633", "#990000")
+  dat2$OrSymbols <-
+    ifelse(dat2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             dat2$OriginSite == "AUSCOR",
+             22,
+             ifelse(dat2$OriginSite == "CELFIG", 23, 21)
+           ))
+  
+  # Because we have modifier the scale of the plot (start at 0.4 instead of 0) 
+  # we need to change the value corresponding to dead fish from 0 to 0.4
+  dat2$Surv[dat2$Death == 1] <- min(finalScale)
+  dat2$Surv[dat2$Death == 0] <- max(finalScale)
+  
+  # associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+    dat2[dat2$t2 == i, "SurvJitter"] <- ifelse(grepl("#990000", dat2[dat2$t2 == i, "Orcolor"]), 
+                                               ifelse(grepl("RIOU", dat2[dat2$t2 == i, "t2"]),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]+0.03),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]+0.015)
+                                               ),
+                                               ifelse(grepl("CELFIG", dat2[dat2$t2 == i, "t2"]),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]-0.03),
+                                                      ifelse(dat2[dat2$t2 == i, "Surv"] == min(finalScale), 
+                                                             dat2[dat2$t2 == i, "Surv"], 
+                                                             dat2[dat2$t2 == i, "Surv"]-0.015)
+                                               ))
+    
+    
+  }
+  
+  dat2$CNumJitter <- jitter(dat2$CNum, 2.5)
+  dat2$SurvJitter <- jitter(dat2$SurvJitter, 5)
+  dat2[which(dat2$SurvJitter < min(finalScale)), "SurvJitter"] <- min(finalScale)
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      points(
+        CNumJitter[k],
+        SurvJitter[k],
+        pch = OrSymbols[k],
+        col = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.2),
+        cex = .75
+      )
+    )}
+  
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
     with(
@@ -515,8 +658,8 @@ Survivplot2 <- function() {
         survival[k] - Se[k],
         CNumJitter[k],
         survival[k] + Se[k],
-        Ga2$Orcolor[k],
-        lwd = 1
+        col = "black",
+        lwd = 1.2
       )
     )
     with(
@@ -524,10 +667,10 @@ Survivplot2 <- function() {
       points(
         CNumJitter[k],
         survival[k],
-        pch = Ga2$OrSymbols[k],
+        pch = OrSymbols[k],
         col = "black",
-        bg = Ga2$Orcolor[k],
-        cex = 2
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.7),
+        cex = 1.5
       )
     )
   }
@@ -608,10 +751,22 @@ BioaccPlot1 <- function() {
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   
   # Create a custom jitter
-  jitt = 0.3
-  for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  jitt = 0.35
+  
+  ## for LC
+  Ga2LC <- Ga2[which(Ga2$TransplantContam == "LC"),]
+  Ga2LC[order(Ga2LC$OriginContam),]
+  for(x in  seq(nrow(Ga2LC))){
+    Ga2LC$CNumJitter[x] <- Ga2LC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
   }
+  ## for HC
+  Ga2HC <- Ga2[which(Ga2$TransplantContam == "HC"),]
+  Ga2HC[order(Ga2HC$OriginContam),]
+  for(x in  seq(nrow(Ga2HC))){
+    Ga2HC$CNumJitter[x] <- Ga2HC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
+  }
+  
+  Ga2 <- merge(Ga2, rbind(Ga2LC[c("t2","CNumJitter")], Ga2HC[c("t2","CNumJitter")]), by = "t2")
   
   # Create an empty plot
   plot(
@@ -620,7 +775,7 @@ BioaccPlot1 <- function() {
     xlab = "",
     axes = FALSE,
     xlim = c(0, 2),
-    ylim = c(-2, 2)
+    ylim = c(-5, 8)
   )
   
   title(
@@ -637,11 +792,12 @@ BioaccPlot1 <- function() {
   )
   
   # draw y axis
-  plotScale <- c("-2.0", "-1.0", "0.0", "1.0", "2.0")
+  plotScale <- c("-4.0", "-2.0", "0.0", "2.0", "4.0", "6.0", "8.0")
+  
   segments(x0 = 0,
-           y0 = -2,
+           y0 = -5,
            x1 = 0,
-           y1 = 2)
+           y1 = 8)
   text(
     rep(0, length(plotScale)),
     as.numeric(plotScale),
@@ -662,9 +818,9 @@ BioaccPlot1 <- function() {
   # draw x axis and add x axis labels
   segments(
     x0 = 0,
-    y0 = -2,
+    y0 = -5,
     x1 = 2,
-    y1 = -2
+    y1 = -5
   )
   for (i in unique(Ga2$TransplantContam)) {
     with(Ga2,
@@ -678,6 +834,39 @@ BioaccPlot1 <- function() {
            cex = 1.2
          ))
   }
+  
+  # some formatting to add the individuals to the plot
+  dat2$Orcolor <-
+    ifelse(dat2$OriginContam == "LC", "#336633", "#990000")
+  dat2$OrSymbols <-
+    ifelse(dat2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             dat2$OriginSite == "AUSCOR",
+             22,
+             ifelse(dat2$OriginSite == "CELFIG", 23, 21)
+           ))
+  
+  # add individual to the plot
+  ## associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+  }
+  
+  dat2$CNumJitter <- jitter(dat2$CNum, 1.5)
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      points(
+        CNumJitter[k],
+        Bioacc[k],
+        pch = OrSymbols[k],
+        col = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.2),
+        cex = .75
+      )
+    )}
   
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
@@ -700,8 +889,8 @@ BioaccPlot1 <- function() {
         Bioacc[k] - Se[k],
         CNumJitter[k],
         Bioacc[k] + Se[k],
-        Ga2$Orcolor[k],
-        lwd = 1
+        col = "black",
+        lwd = 1.2
       )
     )
     with(
@@ -709,18 +898,18 @@ BioaccPlot1 <- function() {
       points(
         CNumJitter[k],
         Bioacc[k],
-        pch = Ga2$OrSymbols[k],
+        pch = OrSymbols[k],
         col = "black",
-        bg = Ga2$Orcolor[k],
-        cex = 2
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.7),
+        cex = 1.5
       )
     )
   }
   
   # Add significance stars above NC fish slopes
   text(
-    c(1.1, 1.1),
-    c(0.9,-0.7),
+    c(1.25, 1.25),
+    c(1.5,-0.25),
     "*",
     xpd = TRUE,
     srt = 0,
@@ -785,18 +974,31 @@ BioaccPlot2 <- function() {
   # define some graphic elements
   Ga2$treat = paste(Ga2$TransplantContam, Ga2$Injection, sep = "_")
   Ga2$Injectioncolor <-
-    ifelse(Ga2$Injection == "PBS", "#808080", "#000000")
-  Ga2$InjectionSymbols <-
-    ifelse(Ga2$Injection == "PBS", 4, 4)
+    ifelse(Ga2$Injection == "PBS", "#808080", "#470C8E")
   Ga2$Contcolor <-
     ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   Ga2$lty <- ifelse(Ga2$Injection == "PBS", 2, 1)
   Ga2 <- Ga2[order(Ga2$Injection), ]
+  
   # Create a custom jitter
   jitt = 0.2
+  counterHC <- 0
+  counterLC <- 0
   for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+    counterHC <- ifelse(Ga2$CNum[x] == 1.75,  counterHC + 1, counterHC)
+    counterLC <-  ifelse(Ga2$CNum[x] == 0.25,  counterLC + 1, counterLC)
+    if(Ga2$CNum[x] == 0.25){
+    Ga2$CNumJitter[x] <-
+      ifelse(counterLC == 1,
+             Ga2$CNum[x] + jitt / 2,
+             Ga2$CNum[x] - jitt / 2)
+    } else if(Ga2$CNum[x] == 1.75){
+      Ga2$CNumJitter[x] <-
+        ifelse(counterHC == 1,
+               Ga2$CNum[x] + jitt / 2,
+               Ga2$CNum[x] - jitt / 2)
+    }
   }
   
   # Create an empty plot
@@ -806,7 +1008,7 @@ BioaccPlot2 <- function() {
     xlab = "",
     axes = FALSE,
     xlim = c(0, 2),
-    ylim = c(-2, 2)
+    ylim = c(-5, 8)
   )
   
   title(
@@ -823,11 +1025,11 @@ BioaccPlot2 <- function() {
   )
   
   # draw y axis
-  plotScale <- c("-2.0", "-1.0", "0.0", "1.0", "2.0")
+  plotScale <- c("-4.0", "-2.0", "0.0", "2.0", "4.0", "6.0", "8.0")
   segments(x0 = 0,
-           y0 = -2,
+           y0 = -5,
            x1 = 0,
-           y1 = 2)
+           y1 = 8)
   text(
     rep(0, length(plotScale)),
     as.numeric(plotScale),
@@ -848,9 +1050,9 @@ BioaccPlot2 <- function() {
   # draw x axis and add x axis labels
   segments(
     x0 = 0,
-    y0 = -2,
+    y0 = -5,
     x1 = 2,
-    y1 = -2
+    y1 = -5
   )
   for (i in unique(Ga2$TransplantContam)) {
     with(Ga2,
@@ -864,7 +1066,33 @@ BioaccPlot2 <- function() {
            cex = 1.2
          ))
   }
+  # some formating to add the individuals to the plot
+  dat2$Injectioncolor <-
+    ifelse(dat2$Injection == "PBS", "#808080", "#470C8E")
+
+  # add individual to the plot
+  ## associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+  }
   
+  dat2$CNumJitter <- jitter(dat2$CNum, 1.5)
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      graphics::symbols(
+        CNumJitter[k],
+        Bioacc[k],
+        stars = cbind(1, 0.5, 1, 0.5, 1, 0.5, 1, 0.5, 1, 0.5),
+        add = T,
+        inches = 0.02,
+        fg = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Injectioncolor[k], alpha.f = 0.2),
+      )
+    )
+    }
+
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
     with(
@@ -874,8 +1102,8 @@ BioaccPlot2 <- function() {
         Bioacc[j],
         CNumJitter[j + 1],
         Bioacc[j + 1],
-        Ga2$Injectioncolor[j],
-        lty = Ga2$lty[j],
+        Injectioncolor[j],
+        lty = lty[j],
         lwd = 2
       )
     )
@@ -889,27 +1117,28 @@ BioaccPlot2 <- function() {
         Bioacc[k] - Se[k],
         CNumJitter[k],
         Bioacc[k] + Se[k],
-        Ga2$Injectioncolor[k],
-        lwd = 1
+        col = "black",
+        lwd = 1.2
       )
     )
     with(
       Ga2,
-      points(
+      graphics::symbols(
         CNumJitter[k],
         Bioacc[k],
-        pch = InjectionSymbols[k],
-        col = "black",
-        bg = Injectioncolor[k],
-        cex = 2
+        stars = cbind(1, 0.5, 1, 0.5, 1, 0.5, 1, 0.5, 1, 0.5),
+        add = T,
+        inches = 0.06,
+        fg = "black",
+        bg = adjustcolor(Injectioncolor[k], alpha.f = 0.7),
       )
     )
   }
-  
+
   # Add significance stars above NC fish slopes
   text(
-    1.1,
-    -0.0,
+    1,
+    -0.75,
     "*",
     xpd = TRUE,
     srt = 0,
@@ -999,10 +1228,22 @@ NLratioPlot1 <- function() {
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   
   # Create a custom jitter
-  jitt = 0.3
-  for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  jitt = 0.35
+  
+  ## for LC
+  Ga2LC <- Ga2[which(Ga2$TransplantContam == "LC"),]
+  Ga2LC[order(Ga2LC$OriginContam),]
+  for(x in  seq(nrow(Ga2LC))){
+    Ga2LC$CNumJitter[x] <- Ga2LC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
   }
+  ## for HC
+  Ga2HC <- Ga2[which(Ga2$TransplantContam == "HC"),]
+  Ga2HC[order(Ga2HC$OriginContam),]
+  for(x in  seq(nrow(Ga2HC))){
+    Ga2HC$CNumJitter[x] <- Ga2HC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
+  }
+  
+  Ga2 <- merge(Ga2, rbind(Ga2LC[c("t2","CNumJitter")], Ga2HC[c("t2","CNumJitter")]), by = "t2")
   
   # Create an empty plot
   plot(
@@ -1011,7 +1252,7 @@ NLratioPlot1 <- function() {
     xlab = "",
     axes = FALSE,
     xlim = c(0, 2),
-    ylim = c(-1.5, 0.5)
+    ylim = c(-1.65, 1.65)
   )
   
   title(
@@ -1028,12 +1269,12 @@ NLratioPlot1 <- function() {
   )
   
   # draw y axis
-  plotScale <- c("-1.5", "-1.0", "-0.5", "0.0", "0.5")
+  plotScale <- c("-1.5", "-1.0", "-0.5", "0.0", "0.5", "1.0", "1.5")
   segments(
     x0 = 0,
-    y0 = -1.5,
+    y0 = -1.65,
     x1 = 0,
-    y1 = 0.5
+    y1 = 1.5
   )
   text(
     rep(0, length(plotScale)),
@@ -1055,9 +1296,9 @@ NLratioPlot1 <- function() {
   # draw x axis and add x axis labels
   segments(
     x0 = 0,
-    y0 = -1.5,
+    y0 = -1.65,
     x1 = 2,
-    y1 = -1.5
+    y1 = -1.65
   )
   for (i in unique(Ga2$TransplantContam)) {
     with(Ga2,
@@ -1071,6 +1312,40 @@ NLratioPlot1 <- function() {
            cex = 1.2
          ))
   }
+  
+  # some formatting to add the individuals to the plot
+  dat2$Orcolor <-
+    ifelse(dat2$OriginContam == "LC", "#336633", "#990000")
+  dat2$OrSymbols <-
+    ifelse(dat2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             dat2$OriginSite == "AUSCOR",
+             22,
+             ifelse(dat2$OriginSite == "CELFIG", 23, 21)
+           ))
+  
+  # add individual to the plot
+  ## associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+  }
+  
+  dat2$CNumJitter <- jitter(dat2$CNum, 1.25)
+  
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      points(
+        CNumJitter[k],
+        NLRatio.p[k],
+        pch = OrSymbols[k],
+        col = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.2),
+        cex = .75
+      )
+    )}
   
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
@@ -1095,8 +1370,8 @@ NLratioPlot1 <- function() {
         NLRatio.p[k] - Se[k],
         CNumJitter[k],
         NLRatio.p[k] + Se[k],
-        Ga2$Orcolor[k],
-        lwd = 1
+        col = "black",
+        lwd = 1.2
       )
     )
     with(
@@ -1104,10 +1379,10 @@ NLratioPlot1 <- function() {
       points(
         CNumJitter[k],
         NLRatio.p[k],
-        pch = Ga2$OrSymbols[k],
+        pch = OrSymbols[k],
         col = "black",
-        bg = Ga2$Orcolor[k],
-        cex = 2
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.7),
+        cex = 1.5
       )
     )
   }
@@ -1174,16 +1449,29 @@ AvailEnerPlot1 <- function() {
     ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   names(Ga2)[3] <- "AE"
+  
   # Create a custom jitter
-  jitt = 0.3
-  for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  jitt = 0.35
+  
+  ## for LC
+  Ga2LC <- Ga2[which(Ga2$TransplantContam == "LC"),]
+  Ga2LC[order(Ga2LC$OriginContam),]
+  for(x in  seq(nrow(Ga2LC))){
+    Ga2LC$CNumJitter[x] <- Ga2LC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
+  }
+  ## for HC
+  Ga2HC <- Ga2[which(Ga2$TransplantContam == "HC"),]
+  Ga2HC[order(Ga2HC$OriginContam),]
+  for(x in  seq(nrow(Ga2HC))){
+    Ga2HC$CNumJitter[x] <- Ga2HC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
   }
   
+  Ga2 <- merge(Ga2, rbind(Ga2LC[c("t2","CNumJitter")], Ga2HC[c("t2","CNumJitter")]), by = "t2")
+  
   # Create a break interval on Y axis
-  breakInt = c(0, 8)
-  ylim = c(0, 9)
-  step = 0.2
+  breakInt = c(0, 7.5)
+  ylim = c(0, 10)
+  step = 0.5
   
   plotScale <- seq(ylim[1], ylim[2], by = step)
   plotScale <-
@@ -1222,13 +1510,11 @@ AvailEnerPlot1 <- function() {
   )
   
   # draw y axis
-  plotScale <- as.character(plotScale)
-  plotScale[which(plotScale == "9")] <- "9.0"
-  plotScale[which(plotScale == "8")] <- "8.0"
-  plotScale[which(plotScale == "0")] <- "0.0"
+  plotScale <- unlist(rapply(as.list(plotScale), sprintf, fmt = "%0.2f", how = "replace"))
+ 
   segments(
     x0 = 0,
-    y0 = max(breakInt) - 1 / 100 * max(breakInt),
+    y0 = max(breakInt) - 2 / 100 * max(breakInt),
     x1 = 0,
     y1 = max(as.numeric(plotScale))
   )
@@ -1236,15 +1522,15 @@ AvailEnerPlot1 <- function() {
     x0 = 0,
     y0 = min(finalScale),
     x1 = 0,
-    y1 = max(breakInt) - 1.5 / 100 * max(breakInt)
+    y1 = max(breakInt) - 4 / 100 * max(breakInt)
   )
   text(0,
-       max(breakInt) - 1 / 100 * max(breakInt),
+       max(breakInt) - 2 / 100 * max(breakInt),
        "\\",
        xpd = F,
        srt = 90)
   text(0,
-       max(breakInt) - 1.5 / 100 * max(breakInt),
+       max(breakInt) - 4 / 100 * max(breakInt),
        "\\",
        xpd = F,
        srt = 90)
@@ -1254,7 +1540,7 @@ AvailEnerPlot1 <- function() {
     as.character(plotScale),
     xpd = TRUE,
     srt = 0,
-    adj = 1.5
+    adj = 1.25
   )
   text(
     rep(0, length(plotScale)),
@@ -1285,6 +1571,40 @@ AvailEnerPlot1 <- function() {
          ))
   }
   
+  # some formatting to add the individuals to the plot
+  dat2$Orcolor <-
+    ifelse(dat2$OriginContam == "LC", "#336633", "#990000")
+  dat2$OrSymbols <-
+    ifelse(dat2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             dat2$OriginSite == "AUSCOR",
+             22,
+             ifelse(dat2$OriginSite == "CELFIG", 23, 21)
+           ))
+  
+  # add individual to the plot
+  ## associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+  }
+  
+  dat2$CNumJitter <- jitter(dat2$CNum, 1.25)
+  
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      points(
+        CNumJitter[k],
+        log(dat2$AvailableEnerJ + 1)[k],
+        pch = OrSymbols[k],
+        col = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.2),
+        cex = .75
+      )
+    )}
+  
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
     with(Ga2,
@@ -1303,18 +1623,18 @@ AvailEnerPlot1 <- function() {
            AE[k] - Se[k],
            CNumJitter[k],
            AE[k] + Se[k],
-           Ga2$Orcolor[k],
-           lwd = 1
+           col = "black",
+           lwd = 1.2
          ))
     with(
       Ga2,
       points(
         CNumJitter[k],
         AE[k],
-        pch = Ga2$OrSymbols[k],
+        pch = OrSymbols[k],
         col = "black",
-        bg = Ga2$Orcolor[k],
-        cex = 2
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.7),
+        cex = 1.5
       )
     )
   }
@@ -1397,29 +1717,43 @@ DMCPlot1 <- function() {
     ifelse(Ga2$TransplantContam == "LC", "#336633", "#990000")
   Ga2$CNum <- ifelse(Ga2$TransplantContam == "LC", 0.25, 1.75)
   names(Ga2)[3] <- "DMC"
+  
   # Create a custom jitter
-  jitt = 0.3
-  for (x in seq(nrow(Ga2))) {
-    Ga2$CNumJitter[x] <- Ga2$CNum[x] + (x / nrow(Ga2) * jitt)
+  jitt = 0.35
+  
+  ## for LC
+  Ga2LC <- Ga2[which(Ga2$TransplantContam == "LC"),]
+  Ga2LC[order(Ga2LC$OriginContam),]
+  for(x in  seq(nrow(Ga2LC))){
+    Ga2LC$CNumJitter[x] <- Ga2LC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
   }
+  ## for HC
+  Ga2HC <- Ga2[which(Ga2$TransplantContam == "HC"),]
+  Ga2HC[order(Ga2HC$OriginContam),]
+  for(x in  seq(nrow(Ga2HC))){
+    Ga2HC$CNumJitter[x] <- Ga2HC$CNum[x] - jitt/2 + (jitt/3)*(x-1)
+  }
+  
+  Ga2 <- merge(Ga2, rbind(Ga2LC[c("t2","CNumJitter")], Ga2HC[c("t2","CNumJitter")]), by = "t2")
   
   # Create a break interval on Y axis
-  breakInt = c(0.0, 0.8)
-  ylim = c(0, 1.8)
-  step = 0.2
+  #breakInt = c(0.0, 0.8)
+  #ylim = c(0, 1.8)
+ # step = 0.2
   
-  plotScale <- seq(ylim[1], ylim[2], by = step)
-  plotScale <-
-    plotScale[which(plotScale <= breakInt[1] |
-                      plotScale >= breakInt[2])]
-  toAdd <- length(which(plotScale <= breakInt[1]))
-  finalScale <- seq(breakInt[2], ylim[2], by = step)
-  toAddfinal <- c()
-  for (h in (seq(toAdd))) {
-    toAdd_temp <- min(finalScale) - (step * h)
-    toAddfinal <- c(toAddfinal, toAdd_temp)
-  }
-  finalScale <- sort(c(toAddfinal, finalScale))
+  #plotScale <- seq(ylim[1], ylim[2], by = step)
+  #plotScale <-
+  #  plotScale[which(plotScale <= breakInt[1] |
+  #                    plotScale >= breakInt[2])]
+  #toAdd <- length(which(plotScale <= breakInt[1]))
+  #finalScale <- seq(breakInt[2], ylim[2], by = step)
+  #toAddfinal <- c()
+  #for (h in (seq(toAdd))) {
+  #  toAdd_temp <- min(finalScale) - (step * h)
+  #  toAddfinal <- c(toAddfinal, toAdd_temp)
+  # }
+  #finalScale <- sort(c(toAddfinal, finalScale))
+  finalScale = seq(0, 2.4, 0.4)
   
   # Create an empty plot
   plot(
@@ -1428,7 +1762,7 @@ DMCPlot1 <- function() {
     xlab = "",
     axes = FALSE,
     xlim = c(0, 2),
-    ylim = c(min(finalScale), max(finalScale))
+    ylim = c(-0.05, max(finalScale))
   )
   
   title(
@@ -1445,41 +1779,23 @@ DMCPlot1 <- function() {
   )
   
   # draw y axis
-  plotScale <- as.character(plotScale)
-  plotScale[which(plotScale == "1")] <- "1.0"
-  plotScale[which(plotScale == "0")] <- "0.0"
   segments(
     x0 = 0,
-    y0 = max(breakInt) - 10 / 100 * max(breakInt),
+    y0 = -0.05,
     x1 = 0,
-    y1 = max(as.numeric(plotScale))
+    y1 = max(finalScale)
   )
-  segments(
-    x0 = 0,
-    y0 = min(finalScale),
-    x1 = 0,
-    y1 = max(breakInt) - 15 / 100 * max(breakInt)
-  )
-  text(0,
-       max(breakInt) - 10 / 100 * max(breakInt),
-       "\\",
-       xpd = F,
-       srt = 90)
-  text(0,
-       max(breakInt) - 15 / 100 * max(breakInt),
-       "\\",
-       xpd = F,
-       srt = 90)
+
   text(
-    rep(0, length(plotScale)),
+    rep(0, length(finalScale)),
     finalScale,
-    as.character(plotScale),
+    unlist(rapply(as.list(finalScale), sprintf, fmt = "%0.2f", how = "replace")),
     xpd = TRUE,
     srt = 0,
-    adj = 1.5
+    adj = 1.25
   )
   text(
-    rep(0, length(plotScale)),
+    rep(0, length(finalScale)),
     finalScale,
     "-",
     xpd = TRUE,
@@ -1490,9 +1806,9 @@ DMCPlot1 <- function() {
   # draw x axis and add x axis labels
   segments(
     x0 = 0,
-    y0 = min(finalScale),
+    y0 = -0.05,
     x1 = 2,
-    y1 = min(finalScale)
+    y1 = -0.05
   )
   for (i in unique(Ga2$TransplantContam)) {
     with(Ga2,
@@ -1506,6 +1822,40 @@ DMCPlot1 <- function() {
            cex = 1.2
          ))
   }
+  
+  # some formatting to add the individuals to the plot
+  dat2$Orcolor <-
+    ifelse(dat2$OriginContam == "LC", "#336633", "#990000")
+  dat2$OrSymbols <-
+    ifelse(dat2$OriginSite == "ARIMAS",
+           24,
+           ifelse(
+             dat2$OriginSite == "AUSCOR",
+             22,
+             ifelse(dat2$OriginSite == "CELFIG", 23, 21)
+           ))
+  
+  # add individual to the plot
+  ## associate the custom jitter previously generated for each site with individuals
+  for(i in unique(dat2$t2)){
+    dat2[dat2$t2 == i, "CNum"] <- Ga2[Ga2$t2 == i, "CNumJitter"]
+  }
+  
+  dat2$CNumJitter <- jitter(dat2$CNum, 1.25)
+  
+  # plot the individuals
+  for (k in seq(nrow(dat2))) {
+    with(
+      dat2,
+      points(
+        CNumJitter[k],
+        DailyMassChange.p[k],
+        pch = OrSymbols[k],
+        col = adjustcolor("black", alpha.f = 0.3),
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.2),
+        cex = .75
+      )
+    )}
   
   # Add reaction norm
   for (j in seq(1, nrow(Ga2), by = 2)) {
@@ -1525,18 +1875,18 @@ DMCPlot1 <- function() {
            DMC[k] - Se[k],
            CNumJitter[k],
            DMC[k] + Se[k],
-           Ga2$Orcolor[k],
-           lwd = 1
+           col = "black",
+           lwd = 1.2
          ))
     with(
       Ga2,
       points(
         CNumJitter[k],
         DMC[k],
-        pch = Ga2$OrSymbols[k],
+        pch = OrSymbols[k],
         col = "black",
-        bg = Ga2$Orcolor[k],
-        cex = 2
+        bg = adjustcolor(Orcolor[k], alpha.f = 0.7),
+        cex = 1.5
       )
     )
   }
@@ -1568,21 +1918,21 @@ Fig1Merged <- function() {
   
   Survivplot2()
   text(0.1,
-       1.0,
+       1.05,
        "A",
        srt = 0,
        cex = 1.2,
        family = "sans")
   BioaccPlot1()
   text(0.1,
-       2.0,
+       8.0,
        "B",
        srt = 0,
        cex = 1.2,
        family = "sans")
   NLratioPlot1()
   text(0.1,
-       0.5,
+       1.5,
        "C",
        srt = 0,
        cex = 1.2,
@@ -1612,7 +1962,7 @@ Fig3Merged <- function() {
   )
   AvailEnerPlot1()
   text(0.1,
-       9.0,
+       10.0,
        "A",
        srt = 0,
        cex = 1.2,
@@ -1620,7 +1970,7 @@ Fig3Merged <- function() {
   legend3()
   DMCPlot1()
   text(0.1,
-       1.8,
+       2.4,
        "B",
        srt = 0,
        cex = 1.2,
@@ -1664,7 +2014,7 @@ legend <- function() {
     pch = c(24, 23, 22, 21),
     bg = c("#336633", "#336633", "#990000", "#990000"),
     col = "black",
-    cex = 2
+    cex = 1.5
   )
   text(
     c(1.4, 1.4),
@@ -1697,31 +2047,31 @@ legend <- function() {
 legend2 <- function() {
   # Create a legend
   text(
-    c(0.3, 0.3),
-    c(-1.5, -1.7),
+    c(0.8, 0.8),
+    c(-3, -4),
     c("PBS", "AMIX"),
     xpd = FALSE,
     srt = 0,
-    col = c("#808080", "#000000"),
+    col = c("#808080", "#470C8E"),
     cex = 0.9,
     family = "sans"
   )
   text(
-    0.43,
-    -1.3,
+    1.05,
+    -2,
     "Imm. Challenge",
     srt = 0,
     cex = 1,
     family = "sans"
   )
-  segments(0.5, -1.52,
-           0.7, -1.52,
+  segments(1, -3,
+           1.2, -3,
            "#808080",
            lty = 2,
            lwd = 2)
-  segments(0.5, -1.72,
-           0.7, -1.72,
-           "#000000",
+  segments(1, -4,
+           1.2, -4,
+           "#470C8E",
            lwd = 2)
 }
 
@@ -1730,7 +2080,7 @@ legend3 <- function() {
   # Create a legend
   text(
     c(0.45, 0.45),
-    c(8.91, 8.83),
+    c(7.41, 7.23),
     c("ARIMAS", "CELFIG"),
     xpd = FALSE,
     srt = 0,
@@ -1739,7 +2089,7 @@ legend3 <- function() {
   )
   text(
     c(1.46, 1.46),
-    c(8.91, 8.83),
+    c(7.41, 7.23),
     c("AUSCOR", "RIOU"),
     xpd = FALSE,
     srt = 0,
@@ -1748,7 +2098,7 @@ legend3 <- function() {
   )
   points(
     c(0.1, 0.1, 1.10, 1.10),
-    c(8.91, 8.83, 8.91, 8.83),
+    c(7.41, 7.23, 7.41, 7.23),
     pch = c(24, 23, 22, 21),
     bg = c("#336633", "#336633", "#990000", "#990000"),
     col = "black",
@@ -1756,15 +2106,15 @@ legend3 <- function() {
   )
   text(
     c(0.75, 1.79),
-    c(8.87, 8.87),
+    c(7.32, 7.32),
     "}",
     srt = 0,
     cex = 3.5,
     family = "sans"
   )
   text(
-    c(0.95, 2.0),
-    c(8.87, 8.87),
+    c(0.875, 1.95),
+    c(7.32, 7.32),
     c("LC", "HC"),
     xpd = FALSE,
     srt = 0,
@@ -1773,7 +2123,7 @@ legend3 <- function() {
   )
   text(
     1.05,
-    8.97,
+    7.57,
     "Origin site",
     srt = 0,
     cex = 1.2,
