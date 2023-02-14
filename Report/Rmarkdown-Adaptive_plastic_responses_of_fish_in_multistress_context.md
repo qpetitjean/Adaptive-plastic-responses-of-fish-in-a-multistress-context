@@ -544,7 +544,7 @@ fisher.test(sexTabCage, simulate.p.value = TRUE)
 ## 	2000 replicates)
 ## 
 ## data:  sexTabCage
-## p-value = 0.08696
+## p-value = 0.07696
 ## alternative hypothesis: two.sided
 ```
 Fisher test is non-significant, which confirm the result of the Chisquare-test
@@ -1262,7 +1262,7 @@ fisher.test((Tutab + 1)*10, simulate.p.value = TRUE) # add 1 to each values to e
 ## 	2000 replicates)
 ## 
 ## data:  (Tutab + 1) * 10
-## p-value = 0.1519
+## p-value = 0.1489
 ## alternative hypothesis: two.sided
 ```
 Fisher test is non-significant, confirming the result of the Chisquare-test: The toxic units are not significantly different among studies
@@ -1302,7 +1302,7 @@ fisher.test((Tutab2 + 1)*10, simulate.p.value = TRUE) # add 1 to each values to 
 ## 	2000 replicates)
 ## 
 ## data:  (Tutab2 + 1) * 10
-## p-value = 0.7026
+## p-value = 0.7096
 ## alternative hypothesis: two.sided
 ```
 Fisher test is non-significant, confirming the result of the Chisquare-test: the toxic units are not significantly different between the start and the end of the experiment
@@ -9007,7 +9007,7 @@ Here, there is no interaction, and hence no posthoc test nor parallelism test to
 ## Summary of the best models for traits excepted gene expression (Table 3 from the manuscript)
 
 The following table report the results of the best models tested above, this table correspond to the Table 3  in the manuscript. Excepted for the survival (GLM), the table report the marginal and conditional Rsquared (R2m and R2c respectively).
-<table class=" lightable-classic" style="font-size: 10px; font-family: arial; width: auto !important; margin-left: auto; margin-right: auto;">
+<table class=" lightable-classic-2" style="font-size: 10px; font-family: arial; width: auto !important; margin-left: auto; margin-right: auto;">
  <thead>
   <tr>
    <th style="text-align:center;">  </th>
@@ -9020,7 +9020,7 @@ The following table report the results of the best models tested above, this tab
   </tr>
  </thead>
 <tbody>
-  <tr grouplength="4"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Survival | n = 268</strong></td></tr>
+  <tr grouplength="4"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Survival | n = 268</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> -19.6 </td>
@@ -9057,7 +9057,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 6.59 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="6"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Bioaccumulation | n = 248 | R2m = 0.0498 | R2c = 0.385</strong></td></tr>
+  <tr grouplength="6"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Bioaccumulation | n = 248 | R2m = 0.0498 | R2c = 0.385</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 0.00786 </td>
@@ -9112,7 +9112,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 4.62 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="2"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Oxidative stress index | n = 166 | R2m = 0.0629 | R2c = 0.258</strong></td></tr>
+  <tr grouplength="2"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Oxidative stress index | n = 166 | R2m = 0.0629 | R2c = 0.258</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 3.54 </td>
@@ -9131,7 +9131,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 9.21 </td>
    <td style="text-align:center;"> &lt;0.01 </td>
   </tr>
-  <tr grouplength="2"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Oxidative damage | n = 179 | R2m = 0.0837 | R2c = 0.34</strong></td></tr>
+  <tr grouplength="2"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Oxidative damage | n = 179 | R2m = 0.0837 | R2c = 0.34</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 2.07 </td>
@@ -9150,7 +9150,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 13.7 </td>
    <td style="text-align:center;"> &lt;0.01 </td>
   </tr>
-  <tr grouplength="2"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Antioxidant capacity | n = 169 | R2m = 0.0502 | R2c = 0.0661</strong></td></tr>
+  <tr grouplength="2"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Antioxidant capacity | n = 169 | R2m = 0.0502 | R2c = 0.0661</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 11.3 </td>
@@ -9169,7 +9169,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 5.59 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="2"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Local immune response | n = 249 | R2m = 0.409 | R2c = 0.492</strong></td></tr>
+  <tr grouplength="2"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Local immune response | n = 249 | R2m = 0.409 | R2c = 0.492</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 26.2 </td>
@@ -9188,7 +9188,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 199 </td>
    <td style="text-align:center;"> &lt;0.0001 </td>
   </tr>
-  <tr grouplength="5"><td colspan="7" style="background-color: #666; color: #fff;"><strong>NL inflammatory immune response | n = 229 | R2m = 0.0714 | R2c = 0.167</strong></td></tr>
+  <tr grouplength="5"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>NL inflammatory immune response | n = 229 | R2m = 0.0714 | R2c = 0.167</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 0.00754 </td>
@@ -9234,7 +9234,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 5.28 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="4"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Available energy | n = 243 | R2m = 0.13 | R2c = 0.256</strong></td></tr>
+  <tr grouplength="4"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Available energy | n = 243 | R2m = 0.13 | R2c = 0.256</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 8.38 </td>
@@ -9271,7 +9271,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 15.3 </td>
    <td style="text-align:center;"> &lt;0.0001 </td>
   </tr>
-  <tr grouplength="4"><td colspan="7" style="background-color: #666; color: #fff;"><strong>Daily mass change | n = 252 | R2m = 0.028 | R2c = 0.47</strong></td></tr>
+  <tr grouplength="4"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Daily mass change | n = 252 | R2m = 0.028 | R2c = 0.47</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 1.2 </td>
@@ -9308,7 +9308,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 4.91 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="2"><td colspan="7" style="background-color: #666; color: #fff;"><strong>HSI | n = 247 | R2m = 0.0211 | R2c = 0.407</strong></td></tr>
+  <tr grouplength="2"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>HSI | n = 247 | R2m = 0.0211 | R2c = 0.407</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 0.102 </td>
@@ -9327,7 +9327,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 4.78 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="2"><td colspan="7" style="background-color: #666; color: #fff;"><strong>GSI | n = 244 | R2m = 0.696 | R2c = 0.753</strong></td></tr>
+  <tr grouplength="2"><td colspan="7" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>GSI | n = 244 | R2m = 0.696 | R2c = 0.753</strong></td></tr>
 <tr>
    <td style="text-align:center;padding-left: 2em;" indentlevel="1"> Intercept </td>
    <td style="text-align:center;"> 0.63 </td>
@@ -12753,7 +12753,7 @@ Here, there is no interaction, and hence no posthoc test nor parallelism test to
 ## Summary of the best models for gene expression (Table 4 from the manuscript)
 
 The following table report the results of the best models tested above, this table correspond to the Table 4 in the manuscript. The table report the marginal and conditional Rsquared (R2m and R2c respectively).
-<table class=" lightable-classic" style="font-size: 10px; font-family: arial; width: auto !important; margin-left: auto; margin-right: auto;">
+<table class=" lightable-classic-2" style="font-size: 10px; font-family: arial; width: auto !important; margin-left: auto; margin-right: auto;">
  <thead>
   <tr>
    <th style="text-align:center;">  </th>
@@ -12767,7 +12767,7 @@ The following table report the results of the best models tested above, this tab
   </tr>
  </thead>
 <tbody>
-  <tr grouplength="3"><td colspan="8" style="background-color: #666; color: #fff;"><strong>Mtl - Metallothionein | n = 245 | R2m = 0.113 | R2c = 0.191</strong></td></tr>
+  <tr grouplength="3"><td colspan="8" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Mtl - Metallothionein | n = 245 | R2m = 0.113 | R2c = 0.191</strong></td></tr>
 <tr>
    <td style="text-align:center;vertical-align: middle !important;padding-left: 2em;" rowspan="3" indentlevel="1"> Metal sequestration </td>
    <td style="text-align:center;"> Intercept </td>
@@ -12798,7 +12798,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 4.24 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="4"><td colspan="8" style="background-color: #666; color: #fff;"><strong>Cat - Catalase | n = 245 | R2m = 0.0582 | R2c = 0.523</strong></td></tr>
+  <tr grouplength="4"><td colspan="8" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Cat - Catalase | n = 245 | R2m = 0.0582 | R2c = 0.523</strong></td></tr>
 <tr>
    <td style="text-align:center;vertical-align: middle !important;padding-left: 2em;" rowspan="4" indentlevel="1"> Antioxidant - Cat </td>
    <td style="text-align:center;"> Intercept </td>
@@ -12839,7 +12839,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 5.83 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="3"><td colspan="8" style="background-color: #666; color: #fff;"><strong>Gpx - Glutathione peroxidase | n = 245 | R2m = 0.0918 | R2c = 0.135</strong></td></tr>
+  <tr grouplength="3"><td colspan="8" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Gpx - Glutathione peroxidase | n = 245 | R2m = 0.0918 | R2c = 0.135</strong></td></tr>
 <tr>
    <td style="text-align:center;vertical-align: middle !important;padding-left: 2em;" rowspan="3" indentlevel="1"> Antioxidant - Gpx </td>
    <td style="text-align:center;"> Intercept </td>
@@ -12870,7 +12870,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 5.29 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="3"><td colspan="8" style="background-color: #666; color: #fff;"><strong>Casp3 - Caspase 3 | n = 246 | R2m = 0.253 | R2c = 0.255</strong></td></tr>
+  <tr grouplength="3"><td colspan="8" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Casp3 - Caspase 3 | n = 246 | R2m = 0.253 | R2c = 0.255</strong></td></tr>
 <tr>
    <td style="text-align:center;vertical-align: middle !important;padding-left: 2em;" rowspan="3" indentlevel="1"> Apoptosis effector </td>
    <td style="text-align:center;"> Intercept </td>
@@ -12901,7 +12901,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 49 </td>
    <td style="text-align:center;"> &lt;0.0001 </td>
   </tr>
-  <tr grouplength="3"><td colspan="8" style="background-color: #666; color: #fff;"><strong>Pcx - Pyruvate carboxylase | n = 239 | R2m = 0.0289 | R2c = 0.432</strong></td></tr>
+  <tr grouplength="3"><td colspan="8" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Pcx - Pyruvate carboxylase | n = 239 | R2m = 0.0289 | R2c = 0.432</strong></td></tr>
 <tr>
    <td style="text-align:center;vertical-align: middle !important;padding-left: 2em;" rowspan="3" indentlevel="1"> Energy metabolism (oxaloacetate synthesis &amp; gluconeogenesis) </td>
    <td style="text-align:center;"> Intercept </td>
@@ -12932,7 +12932,7 @@ The following table report the results of the best models tested above, this tab
    <td style="text-align:center;"> 4.92 </td>
    <td style="text-align:center;"> &lt;0.05 </td>
   </tr>
-  <tr grouplength="2"><td colspan="8" style="background-color: #666; color: #fff;"><strong>Pygl - Glycogen phosphorylase | n = 226 | R2m = 0.0369 | R2c = 0.181</strong></td></tr>
+  <tr grouplength="2"><td colspan="8" style="background-color: #fff; color: #000; border-bottom: 1px solid; border-top: 1px solid; font-style: italic;"><strong>Pygl - Glycogen phosphorylase | n = 226 | R2m = 0.0369 | R2c = 0.181</strong></td></tr>
 <tr>
    <td style="text-align:center;vertical-align: middle !important;padding-left: 2em;" rowspan="2" indentlevel="1"> Energy metabolism (glycogen breakdown to produce glucose) </td>
    <td style="text-align:center;"> Intercept </td>
@@ -12966,7 +12966,7 @@ sessionInfo()
 ```
 ## R version 4.1.0 (2021-05-18)
 ## Platform: x86_64-w64-mingw32/x64 (64-bit)
-## Running under: Windows 10 x64 (build 22000)
+## Running under: Windows 10 x64 (build 22621)
 ## 
 ## Matrix products: default
 ## 
@@ -12986,7 +12986,7 @@ sessionInfo()
 ## [13] cellranger_1.1.0      yaml_2.2.1            bayestestR_0.11.5    
 ## [16] ggrepel_0.9.1         pillar_1.7.0          lattice_0.20-44      
 ## [19] glue_1.6.2            pROC_1.17.0.1         digest_0.6.27        
-## [22] rvest_1.0.0           minqa_1.2.4           colorspace_2.0-2     
+## [22] rvest_1.0.3           minqa_1.2.4           colorspace_2.0-2     
 ## [25] MuMIn_1.43.17         plyr_1.8.6            htmltools_0.5.2      
 ## [28] Matrix_1.3-3          pkgconfig_2.0.3       haven_2.4.1          
 ## [31] purrr_0.3.4           patchwork_1.1.1       scales_1.1.1         
