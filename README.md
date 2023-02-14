@@ -1,6 +1,10 @@
 # Adaptive plastic responses of fish in a multistress context
 ## General
-This repository contains the data and scripts use to test the plastic responses of fish (_Gobio Occitaniae_) under metal-contaminated streams and immune challenge. These results are discussed in the following manuscript: 
+![GitHub](https://img.shields.io/github/license/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context)
+![GitHub repo size](https://img.shields.io/github/repo-size/qpetitjean/Adaptive-plastic-responses-of-fish-in-a-multistress-context)
+
+This repository contains the data and scripts used to test the plastic responses of fish (_Gobio Occitaniae_) under metal-contaminated streams and immune challenge. These results are discussed in the following manuscript: 
 
 Petitjean Q., Laffaille P., Perrault A., Cousseau M., Jean S., Jacquin L. Adaptive plastic responses to metal contamination in a multistress context: a field experiment in fish.
 
