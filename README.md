@@ -7,7 +7,7 @@
 
 This repository contains the data and scripts used to test the plastic responses of fish (_Gobio Occitaniae_) under metal-contaminated streams and immune challenge. These results are discussed in the following manuscript: 
 
-Petitjean Q., Laffaille P., Perrault A., Cousseau M., Jean S., Jacquin L. Adaptive plastic responses to metal contamination in a multistress context: a field experiment in fish.
+Petitjean Q, Laffaille P, Perrault A, et al (2023) Adaptive plastic responses to metal contamination in a multistress context: a field experiment in fish. Environ Sci Pollut Res. [https://doi.org/10.1007/s11356-023-26189-w](https://link.springer.com/article/10.1007/s11356-023-26189-w)
 
 ## Content
 
